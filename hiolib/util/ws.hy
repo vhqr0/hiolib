@@ -48,9 +48,9 @@
   (setv Cont  0x00
         Text  0x01
         Bin   0x02
-        Close 0x10
-        Ping  0x11
-        Pong  0x12))
+        Close 0x08
+        Ping  0x09
+        Pong  0x0a))
 
 (defn ws-mask-pload [pload mask]
   (let [arr (bytearray pload)]
