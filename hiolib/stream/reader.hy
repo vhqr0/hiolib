@@ -59,7 +59,7 @@
 
 (async-defclass BIOStreamReader [(async-name StreamReader)]
   (defn #-- init [self [bio b""] #* args #** kwargs]
-    (#super-- #* args #** kwargs)
+    (#super-- init #* args #** kwargs)
     (setv self.bio (BytesIO bio)))
 
   (async-defn read1 [self]
