@@ -22,8 +22,8 @@
   (Server #(host port) Handler))
 
 (defclass SocketStream [Stream]
-  (defn #-- init [self sock #* args #** kwargs]
-    (#super-- init #* args #** kwargs)
+  (defn #-- init [self sock #** kwargs]
+    (#super-- init #** kwargs)
     (setv self.sock sock))
 
   (defn close1 [self]
@@ -48,8 +48,8 @@
     (start-server _callback host port)))
 
 (defclass TLSStream [SocketStream]
-  (defn #-- init [ssock #* args #** kwargs]
-    (#super-- init #* args #** kwargs)
+  (defn #-- init [ssock #** kwargs]
+    (#super-- init #** kwargs)
     (setv self.ssock ssock))
 
   (defn read1 [self]
@@ -75,8 +75,8 @@
     (start-server _callback host port)))
 
 (defclass AsyncioStream [AsyncStream]
-  (defn #-- init [self reader writer #* args #** kwargs]
-    (#super-- init #* args #** kwargs)
+  (defn #-- init [self reader writer #** kwargs]
+    (#super-- init #** kwargs)
     (setv self.reader reader
           self.writer writer))
 

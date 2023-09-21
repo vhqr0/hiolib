@@ -97,11 +97,10 @@
     :to (if mask (ws-mask-pload it mask) it)]])
 
 (async-defclass WSStream [(async-name Stream)]
-  (defn #-- init [self [do-mask True] #* args #** kwargs]
-    (#super-- init #* args #** kwargs)
+  (defn #-- init [self [do-mask True] #** kwargs]
+    (#super-- init #** kwargs)
     (setv self.do-mask do-mask
-          self.pings (deque)
-          self.pong None))
+          self.pings (deque)))
 
   (async-defn read-frame [self]
     (let [#(fin op _ _ pload)
@@ -134,7 +133,7 @@
                WSOp.Bin   (return pload)
                WSOp.Close (return b"")
                WSOp.Ping  (.append self.pings pload)
-               WSOp.Pong  (setv self.pong pload)))))
+               WSOp.Pong  None))))
 
   (async-defn write1 [self buf]
     (while self.pings
@@ -143,8 +142,8 @@
     (async-wait (.write-frame self WSOp.Bin buf))))
 
 (async-defclass WSConnector [(async-name Connector)]
-  (defn #-- init [self host path #* args #** kwargs]
-    (#super-- init #* args #** kwargs)
+  (defn #-- init [self host path #** kwargs]
+    (#super-- init #** kwargs)
     (setv self.host host
           self.path path))
 

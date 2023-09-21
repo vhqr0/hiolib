@@ -13,8 +13,8 @@
       (async-wait (.write1 self buf)))))
 
 (defclass LayerMixin []
-  (defn #-- init [self [next-layer None] #* args #** kwargs]
-    (#super-- init #* args #** kwargs)
+  (defn #-- init [self [next-layer None] #** kwargs]
+    (#super-- init #** kwargs)
     (setv self.next-layer next-layer))
 
   (defn [property] lowest-layer [self]

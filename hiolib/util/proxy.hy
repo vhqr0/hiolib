@@ -13,8 +13,8 @@
   hiolib.util.ws *)
 
 (async-defclass ProxyConnector [(async-name Connector)]
-  (defn #-- init [self host port #* args #** kwargs]
-    (#super-- init #* args #** kwargs)
+  (defn #-- init [self host port #** kwargs]
+    (#super-- init #** kwargs)
     (setv self.host host
           self.port port)))
 
@@ -141,8 +141,8 @@
     next-stream))
 
 (defclass TrojanMixin []
-  (defn #-- init [self auth #* args #** kwargs]
-    (#super-- init #* args #** kwargs)
+  (defn #-- init [self auth #** kwargs]
+    (#super-- init #** kwargs)
     (setv self.auth auth)))
 
 (async-defclass TrojanConnector [TrojanMixin (async-name ProxyConnector)]
