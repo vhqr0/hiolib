@@ -6,7 +6,7 @@
   hiolib.struct *)
 
 (setv PCAP-LE-MAGIC b"\xd4\xc3\xb2\xa1"
-      PCAP-BE-MAGIC b"\xd4\xc3\xb2\xa1")
+      PCAP-BE-MAGIC b"\xa1\xb2\xc3\xd4")
 
 (defstruct PcapHead
   [[bytes magic :len 4]
@@ -65,7 +65,7 @@
           self.magic magic
           self.int-coder (PcapIntCoder magic)))
 
-  (defn write-head [self [major 0x0200] [minor 0x0200] [thiszone 0] [sigfigs 0] [snaplen 65535] [linktype 1]]
+  (defn write-head [self [major 0x0200] [minor 0x0400] [thiszone 0] [sigfigs 0] [snaplen 65535] [linktype 1]]
     (.write self.writer (.pack PcapHead
                                :magic    self.magic
                                :major    (.pack self.int-coder major 2)
