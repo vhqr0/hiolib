@@ -55,7 +55,16 @@
     (async-wait (.peek-until self (fn [buf] (>= (.find buf sep) 0))))
     (let [#(buf1 buf2) (.split self.read-buf sep 1)]
       (setv self.read-buf buf2)
-      buf1)))
+      buf1))
+
+  (async-defn read-all [self]
+    (let [bufs (list)]
+      (while True
+        (let [buf (async-wait (.read self))]
+          (unless buf
+            (break))
+          (.append bufs buf)))
+      (.join b"" bufs))))
 
 (async-defclass BIOStreamReader [(async-name StreamReader)]
   (defn #-- init [self [bio b""] #** kwargs]

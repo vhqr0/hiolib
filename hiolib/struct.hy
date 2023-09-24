@@ -187,6 +187,15 @@
          ~@(gfor field fields field.unpack-setv-form)
          #(~@names)))))
 
+(defclass AllField [Field]
+  (setv field-type 'all)
+
+  (defn [property] from-bytes-form [self]
+    `(async-wait (.read-all reader)))
+
+  (defn [property] to-bytes-form [self]
+    'it))
+
 (defclass BytesField [Field]
   (setv field-type 'bytes)
 
