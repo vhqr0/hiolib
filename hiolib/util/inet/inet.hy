@@ -84,7 +84,8 @@
 (defclass CksumProxyPloadMixin [CksumProxyMixin]
   (defn post-build [self]
     (#super post-build)
-    (when (isinstance self.next-packet CksumProxyMixin)
+    (when (and (isinstance self.next-packet CksumProxyMixin)
+               self.next-packet.cksum-packet)
       (setv self.cksum-packet self.next-packet.cksum-packet
             self.cksum-proto  self.next-packet.cksum-proto
             self.cksum-offset (+ (len self.head) self.next-packet.cksum-offset)
@@ -114,7 +115,7 @@
             (setv packet.cksum s
                   self.pload (int-replace self.pload offset 2 s))))))))
 
-(defclass EtherProto [NextClassDict IntEnum]
+(defclass EtherType [NextClassDict IntEnum]
   (setv ARP  0x0806
         IPv4 0x0800
         IPv6 0x86dd))
@@ -165,27 +166,11 @@
 
 (defpacket [] Ether [NextClassMixin]
   [[struct [[dst] [src]] :struct (async-name MACAddr) :repeat 2]
-   [int proto :len 2]]
-  [dst src [proto 0]]
+   [int type :len 2]]
+  [dst src [type 0]]
 
-  (setv next-class-attr "proto"
-        next-class-dict EtherProto))
-
-(defclass ARPOp [IntEnum]
-  (setv Req 1 Rep 2))
-
-(defpacket [(EtherProto.register EtherProto.ARP)] ARP []
-  [[int hwtype :len 2]
-   [int prototype :len 2]
-   [int hwlen :len 1]
-   [int protolen :len 1]
-   [int op :len 2]
-   [struct [hwsrc] :struct (async-name MACAddr)]
-   [struct [protosrc] :struct (async-name IPv4Addr)]
-   [struct [hwdst] :struct (async-name MACAddr)]
-   [struct [protodst] :struct (async-name IPv4Addr)]]
-  [[hwtype 1] [prototype EtherProto.IPv4] [hwlen 6] [protolen 4] [op ARPOp.Req]
-   hwsrc protosrc hwdst protodst])
+  (setv next-class-attr "type"
+        next-class-dict EtherType))
 
 ;;; used by IPv4Opt and TCPOpt
 (defclass InetOptMixin []
@@ -223,7 +208,7 @@
 (defclass IPv4Opt [InetOptMixin IntEnum]
   (setv EOL 0 NOP 1))
 
-(defpacket [(EtherProto.register EtherProto.IPv4)] IPv4
+(defpacket [(EtherType.register EtherType.IPv4)] IPv4
   ;; order is necessary: next class mixin should resolve proto first,
   ;; then cksum pload mixin can calculate phead
   [CksumPloadMixin NextClassMixin]
@@ -295,7 +280,7 @@
                 (+= buf b"\x01" (int-pack (- n 2) 1) (bytes (- n 2))))))
         buf))))
 
-(defpacket [(EtherProto.register EtherProto.IPv6)] IPv6 [CksumPloadMixin NextClassMixin]
+(defpacket [(EtherType.register EtherType.IPv6)] IPv6 [CksumPloadMixin NextClassMixin]
   [[bits [ver tc fl] :lens [4 8 20]]
    [int plen :len 2]
    [int nh :len 1]
@@ -357,6 +342,210 @@
 
 (defclass [(IPProto.register IPProto.HBHOpts)]  IPv6HBHOpts  [IPv6Opts])
 (defclass [(IPProto.register IPProto.DestOpts)] IPv6DestOpts [IPv6Opts])
+
+(defclass ARPOp [IntEnum]
+  (setv Req 1 Rep 2))
+
+(defpacket [(EtherType.register EtherType.ARP)] ARP []
+  [[int hwtype :len 2]
+   [int prototype :len 2]
+   [int hwlen :len 1]
+   [int protolen :len 1]
+   [int op :len 2]
+   [struct [hwsrc] :struct (async-name MACAddr)]
+   [struct [protosrc] :struct (async-name IPv4Addr)]
+   [struct [hwdst] :struct (async-name MACAddr)]
+   [struct [protodst] :struct (async-name IPv4Addr)]]
+  [[hwtype 1] [prototype EtherType.IPv4] [hwlen 6] [protolen 4] [op ARPOp.Req]
+   hwsrc protosrc hwdst protodst])
+
+(defclass IPv4Error [IPv4])
+(defclass IPv6Error [IPv6])
+
+(defclass ICMPv4Type [NextClassDict IntEnum]
+  (setv EchoReq       8
+        EchoRep       0
+        DestUnreach   3
+        TimeExceeded 11
+        ParamProblem 12
+        Redirect      5))
+
+(defclass ICMPv6Type [NextClassDict IntEnum]
+  (setv EchoReq      128
+        EchoRep      129
+        DestUnreach    1
+        PacketTooBig   2
+        TimeExceeded   3
+        ParamProblem   4
+        NDRS         133
+        NDRA         134
+        NDNS         135
+        NDNA         136
+        NDRM         137))
+
+(defpacket [(IPProto.register IPProto.ICMPv4)] ICMPv4 [NextClassMixin]
+  [[int [type code] :len 1 :repeat 2]
+   [int cksum :len 2]]
+  [[type 0] [code 0] [cksum 0]]
+
+  (setv next-class-attr "type"
+        next-class-dict ICMPv4Type)
+
+  (defn post-build [self]
+    (#super post-build)
+    (when (= self.cksum 0)
+      (setv self.cksum (cksum (+ self.head self.pload))
+            self.head (int-replace self.head 2 2 self.cksum)))))
+
+(defpacket [] ICMPv4Echo []
+  [[int [id seq] :len 2 :repeat 2]]
+  [[id 0] [seq 0]])
+
+(defclass [(ICMPv4Type.register ICMPv4Type.EchoReq)] ICMPv4EchoReq [ICMPv4Echo])
+(defclass [(ICMPv4Type.register ICMPv4Type.EchoRep)] ICMPv4EchoRep [ICMPv4Echo])
+
+(defclass ICMPv4WithPacketMixin []
+  (defn [property] parse-next-class [self] IPv4Error))
+
+(defpacket [] ICMPv4WithPacket [ICMPv4WithPacketMixin]
+  [[int unused :len 4]]
+  [[unused 0]])
+
+(defpacket [] ICMPv4WithPacketPtr [ICMPv4WithPacketMixin]
+  [[int ptr :len 1] [int unused :len 3]]
+  [[ptr 0] [unused 0]])
+
+(defpacket [] ICMPv4WithPacketAddr [ICMPv4WithPacketMixin]
+  [[struct [addr] :struct (async-name IPv4Addr)]]
+  [addr])
+
+(defclass [(ICMPv4Type.register ICMPv4Type.DestUnreach)]  ICMPv4DestUnreach  [ICMPv4WithPacket])
+(defclass [(ICMPv4Type.register ICMPv4Type.TimeExceeded)] ICMPv4TimeExceeded [ICMPv4WithPacket])
+(defclass [(ICMPv4Type.register ICMPv4Type.ParamProblem)] ICMPv4ParamProblem [ICMPv4WithPacketPtr])
+(defclass [(ICMPv4Type.register ICMPv4Type.Redirect)]     ICMPv4Redirect     [ICMPv4WithPacketAddr])
+
+(defpacket [(IPProto.register IPProto.ICMPv6)] ICMPv6 [CksumProxySelfMixin NextClassMixin]
+  [[int [type code] :len 1 :repeat 2]
+   [int cksum :len 2]]
+  [[type 0] [code 0] [cksum 0]]
+
+  (setv next-class-attr "type"
+        next-class-dict ICMPv6Type)
+
+  (setv cksum-proto  IPProto.ICMPv6
+        cksum-offset 2))
+
+(defpacket [] ICMPv6Echo []
+  [[int [id seq] :len 2 :repeat 2]]
+  [[id 0] [seq 0]])
+
+(defclass [(ICMPv6Type.register ICMPv6Type.EchoReq)] ICMPv6EchoReq [ICMPv6Echo])
+(defclass [(ICMPv6Type.register ICMPv6Type.EchoRep)] ICMPv6EchoRep [ICMPv6Echo])
+
+(defclass ICMPv6WithPacketMixin []
+  (defn [property] parse-next-class [self] IPv6Error))
+
+(defpacket [] ICMPv6WithPacket [ICMPv6WithPacketMixin]
+  [[int unused :len 4]]
+  [[unused 0]])
+
+(defpacket [] ICMPv6WithPacketMtu [ICMPv6WithPacketMixin]
+  [[int mtu :len 4]]
+  [[mtu 1280]])
+
+(defpacket [] ICMPv6WithPacketPtr [ICMPv6WithPacketMixin]
+  [[int ptr :len 4]]
+  [[ptr 0]])
+
+(defclass [(ICMPv6Type.register ICMPv6Type.DestUnreach)]  ICMPv6DestUnreach  [ICMPv6WithPacket])
+(defclass [(ICMPv6Type.register ICMPv6Type.DestUnreach)]  ICMPv6PacketTooBig [ICMPv6WithPacketMtu])
+(defclass [(ICMPv6Type.register ICMPv6Type.TimeExceeded)] ICMPv6TimeExceeded [ICMPv6WithPacket])
+(defclass [(ICMPv6Type.register ICMPv6Type.ParamProblem)] ICMPv6ParamProblem [ICMPv6WithPacketPtr])
+
+(defclass ICMPv6ND []
+  (defn [property] parse-next-class [self] ICMPv6NDOpt))
+
+(defpacket [(ICMPv6Type.register ICMPv6Type.NDRS)] ICMPv6NDRS [ICMPv6ND]
+  [[int res :len 4]]
+  [[res 0]])
+
+(defpacket [(ICMPv6Type.register ICMPv6Type.NDRA)] ICMPv6NDRA [ICMPv6ND]
+  [[int hlim :len 1]
+   [bits [M O res] :lens [1 1 6]]
+   [int routerlifetime :len 2]
+   [int reachabletime :len 4]
+   [int retranstimer :len 4]]
+  [[hlim 0] [M 0] [O 0] [res 0] [routerlifetime 1800]
+   [reachabletime 0] [retranstimer 0]])
+
+(defpacket [(ICMPv6Type.register ICMPv6Type.NDNS)] ICMPv6NDNS [ICMPv6ND]
+  [[int res :len 4]
+   [struct [tgt] :struct (async-name IPv6Addr)]]
+  [[res 0] tgt])
+
+(defpacket [(ICMPv6Type.register ICMPv6Type.NDNA)] ICMPv6NDNA [ICMPv6ND]
+  [[bits [R S O res] :lens [1 1 1 29]]
+   [struct [tgt] :struct (async-name IPv6Addr)]]
+  [[R 0] [S 0] [O 0] [res 0] tgt])
+
+(defpacket [(ICMPv6Type.register ICMPv6Type.NDRM)] ICMPv6NDRM [ICMPv6ND]
+  [[int res :len 4]
+   [struct [[tgt] [dst]] :struct (async-name IPv6Addr) :repeat 2]]
+  [[res 0] tgt dst])
+
+(defclass ICMPv6NDOptType [NextClassDict IntEnum]
+  (setv SrcAddr 1
+        DstAddr 2
+        Prefix  3
+        RMHead  4
+        MTU     5))
+
+(defpacket [] ICMPv6NDOpt [NextClassMixin]
+  [[int type :len 1]]
+  [[type 0]]
+
+  (setv next-class-attr "type"
+        next-class-dict ICMPv6NDOptType))
+
+(defclass ICMPv6NDOptMixin []
+  (defn [property] parse-next-class [self] ICMPv6NDOpt))
+
+(defpacket [] ICMPv6NDOptAddr [ICMPv6NDOptMixin]
+  [[int olen :len 1]
+   [struct [addr] :struct (async-name MACAddr)]]
+  [[olen 1] addr])
+
+(defclass [(ICMPv6NDOptType.register ICMPv6NDOptType.SrcAddr)] ICMPv6NDOptSrcAddr [ICMPv6NDOptAddr])
+(defclass [(ICMPv6NDOptType.register ICMPv6NDOptType.DstAddr)] ICMPv6NDOptDstAddr [ICMPv6NDOptAddr])
+
+(defpacket [(ICMPv6NDOptType.register ICMPv6NDOptType.Prefix)] ICMPv6NDOptPrefix [ICMPv6NDOptMixin]
+  [[int olen :len 1]
+   [int plen :len 1]
+   [bits [L A res1] :lens [1 1 6]]
+   [int validlifetime :len 4]
+   [int preferredtime :len 4]
+   [int res2 :len 4]
+   [struct [prefix] :struct (async-name IPv6Addr)]]
+  [[olen 4] [plen 64] [L 0] [A 0] [res1 0]
+   [validlifetime 0xffffffff] [preferredtime 0xffffffff]
+   [res2 0] prefix])
+
+(defpacket [(ICMPv6NDOptType.register ICMPv6NDOptType.RMHead)] ICMPv6NDOPtRMHead [ICMPv6NDOptMixin]
+  [[int olen :len 1]
+   [int res :len 6]
+   [bytes data :len (* (- olen 1) 8)]]
+  [[olen 0] [res 0] [data b""]]
+
+  (defn pre-build [self]
+    (#super pre-build)
+    (when (= self.olen 0)
+      (setv self.olen (+ (// (len self.data) 8) 1)))))
+
+(defpacket [(ICMPv6NDOptType.register ICMPv6NDOptType.MTU)] ICMPv6NDOptMTU [ICMPv6NDOptMixin]
+  [[int olen :len 1]
+   [int res :len 2]
+   [int mtu :len 4]]
+  [[olen 1] [res 0] [mtu 1280]])
 
 (defpacket [(IPProto.register IPProto.UDP)] UDP [CksumProxySelfMixin]
   [[int [src dst] :len 2 :repeat 2]
