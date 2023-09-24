@@ -3,6 +3,7 @@
 
 (import
   asyncio
+  io
   socket
   socketserver [ThreadingTCPServer BaseRequestHandler]
   hiolib.stream.stream *)
@@ -12,6 +13,24 @@
     b"")
 
   (async-defn write1 [self buf]))
+
+(async-defclass RawIOStream [(async-name Stream)]
+  (defn #-- init [self io #** kwargs]
+    (#super-- init #** kwargs)
+    (setv self.io io))
+
+  (async-defn read1 [self]
+    (.read self.io 4096))
+
+  (async-defn write1 [self buf]
+    (.write self.io buf)))
+
+(async-defclass BIOStream [(async-name RawIOStream)]
+  (defn #-- init [self bio #** kwargs]
+    (#super-- init :io (io.BytesIO bio) #** kwargs))
+
+  (defn getvalue [self]
+    (.getvalue self.io)))
 
 (defn start-server [callback host port]
   (defclass Server [ThreadingTCPServer]
@@ -113,4 +132,5 @@
     (await (asyncio.start-server _callback host port :ssl tls-ctx :reuse-address True))))
 
 (export
-  :objects [NullStream AsyncNullStream TCPStream AsyncTCPStream TLSStream AsyncTLSStream])
+  :objects [NullStream AsyncNullStream RawIOStream AsyncRawIOStream BIOStream AsyncBIOStream
+            TCPStream AsyncTCPStream TLSStream AsyncTLSStream])

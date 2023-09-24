@@ -42,7 +42,7 @@
     (dict (zip cls.names (async-wait (.unpack-from-stream cls reader)))))
 
   (async-defn [classmethod] unpack [cls buf]
-    (let [reader ((async-name BIOStreamReader) buf)
+    (let [reader ((async-name BIOStream) buf)
           st (async-wait (cls.unpack-from-stream reader))]
       (let [buf (async-wait (.peek reader))]
         (when (async-wait (.peek reader))

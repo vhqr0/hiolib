@@ -56,7 +56,7 @@
   (when (& (len buf) 1)
     (+= buf b"\x00"))
   (let [s 0
-        reader (BIOStreamReader buf)]
+        reader (BIOStream buf)]
     (while (.peek reader)
       (+= s (int-unpack (.read-exactly reader 2))))
     (setv s (+ (>> s 16) (& s 0xffff)))
@@ -178,7 +178,7 @@
     (unless (= (% (len buf) 4) 0)
       (raise ValueError))
     (let [opts (list)
-          reader (BIOStreamReader buf)]
+          reader (BIOStream buf)]
       (while (.peek reader)
         (let [opt (int-unpack (.read-exactly reader 1))]
           (cond (= opt cls.EOL)
@@ -254,7 +254,7 @@
     (unless (= (% (+ (len buf) 2) 8) 0)
       (raise ValueError))
     (let [opts (list)
-          reader (BIOStreamReader buf)]
+          reader (BIOStream buf)]
       (while (.peek reader)
         (let [opt (int-unpack (.read-exactly reader 1))]
           (if (= opt cls.Pad1)

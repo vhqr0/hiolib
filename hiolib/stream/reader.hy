@@ -66,14 +66,5 @@
           (.append bufs buf)))
       (.join b"" bufs))))
 
-(async-defclass BIOStreamReader [(async-name StreamReader)]
-  (defn #-- init [self [bio b""] #** kwargs]
-    (#super-- init #** kwargs)
-    (setv self.bio (BytesIO bio)))
-
-  (async-defn read1 [self]
-    (.read self.bio 4096)))
-
 (export
-  :objects [StreamError StreamEOFError StreamOverflowError
-            StreamReader AsyncStreamReader BIOStreamReader AsyncBIOStreamReader])
+  :objects [StreamError StreamEOFError StreamOverflowError StreamReader AsyncStreamReader])

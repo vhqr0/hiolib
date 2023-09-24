@@ -49,7 +49,7 @@
   (defn [property] parse-next-class [self])
 
   (defn [classmethod] parse [cls buf]
-    (let [reader (BIOStreamReader buf)
+    (let [reader (BIOStream buf)
           packet (cls #** (.unpack-dict-from-stream cls.struct reader))
           buf (.read-all reader)]
       (when buf
