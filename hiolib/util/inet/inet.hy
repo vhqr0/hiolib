@@ -130,6 +130,10 @@
         TCP       6
         UDP      17))
 
+(setv MAC-ZERO "00:00:00:00:00:00"
+      IPv4-ZERO "0.0.0.0"
+      IPv6-ZERO "::")
+
 (defn mac-ntop [n]
   (.join ":" (gfor c n (.format "{:02x}" c))))
 
@@ -167,7 +171,7 @@
 (defpacket [] Ether [NextClassMixin]
   [[struct [[dst] [src]] :struct (async-name MACAddr) :repeat 2]
    [int type :len 2]]
-  [dst src [type 0]]
+  [[dst MAC-ZERO] [src MAC-ZERO] [type 0]]
 
   (setv next-class-attr "type"
         next-class-dict EtherType))
@@ -227,7 +231,7 @@
     :to (IPv4Opt.unpack it)]]
   [[ver 4] [ihl 0] [tos 0] [tlen 0] [id 0]
    [res 0] [DF 0] [MF 0] [offset 0] [ttl 64]
-   [proto 0] [cksum 0] src dst [opts #()]]
+   [proto 0] [cksum 0] [src IPv4-ZERO] [dst IPv4-ZERO] [opts #()]]
 
   (setv next-class-attr "proto"
         next-class-dict IPProto)
@@ -286,7 +290,7 @@
    [int nh :len 1]
    [int hlim :len 1]
    [struct [[src] [dst]] :struct (async-name IPv6Addr) :repeat 2]]
-  [[ver 6] [tc 0] [fl 0] [plen 0] [nh 0] [hlim 64] src dst]
+  [[ver 6] [tc 0] [fl 0] [plen 0] [nh 0] [hlim 64] [src IPv6-ZERO] [dst IPv6-ZERO]]
 
   (setv next-class-attr "nh"
         next-class-dict IPProto)
@@ -357,7 +361,7 @@
    [struct [hwdst] :struct (async-name MACAddr)]
    [struct [protodst] :struct (async-name IPv4Addr)]]
   [[hwtype 1] [prototype EtherType.IPv4] [hwlen 6] [protolen 4] [op ARPOp.Req]
-   hwsrc protosrc hwdst protodst])
+   [hwsrc MAC-ZERO] [protosrc IPv4-ZERO] [hwdst MAC-ZERO] [protodst IPv4-ZERO]])
 
 (defclass IPv4Error [IPv4])
 (defclass IPv6Error [IPv6])
@@ -417,7 +421,7 @@
 
 (defpacket [] ICMPv4WithPacketAddr [ICMPv4WithPacketMixin]
   [[struct [addr] :struct (async-name IPv4Addr)]]
-  [addr])
+  [[addr IPv4-ZERO]])
 
 (defclass [(ICMPv4Type.register ICMPv4Type.DestUnreach)]  ICMPv4DestUnreach  [ICMPv4WithPacket])
 (defclass [(ICMPv4Type.register ICMPv4Type.TimeExceeded)] ICMPv4TimeExceeded [ICMPv4WithPacket])
@@ -481,17 +485,17 @@
 (defpacket [(ICMPv6Type.register ICMPv6Type.NDNS)] ICMPv6NDNS [ICMPv6ND]
   [[int res :len 4]
    [struct [tgt] :struct (async-name IPv6Addr)]]
-  [[res 0] tgt])
+  [[res 0] [tgt IPv6-ZERO]])
 
 (defpacket [(ICMPv6Type.register ICMPv6Type.NDNA)] ICMPv6NDNA [ICMPv6ND]
   [[bits [R S O res] :lens [1 1 1 29]]
    [struct [tgt] :struct (async-name IPv6Addr)]]
-  [[R 0] [S 0] [O 0] [res 0] tgt])
+  [[R 0] [S 0] [O 0] [res 0] [tgt IPv6-ZERO]])
 
 (defpacket [(ICMPv6Type.register ICMPv6Type.NDRM)] ICMPv6NDRM [ICMPv6ND]
   [[int res :len 4]
    [struct [[tgt] [dst]] :struct (async-name IPv6Addr) :repeat 2]]
-  [[res 0] tgt dst])
+  [[res 0] [tgt IPv6-ZERO] [dst IPv6-ZERO]])
 
 (defclass ICMPv6NDOptType [NextClassDict IntEnum]
   (setv SrcAddr 1
@@ -513,7 +517,7 @@
 (defpacket [] ICMPv6NDOptAddr [ICMPv6NDOptMixin]
   [[int olen :len 1]
    [struct [addr] :struct (async-name MACAddr)]]
-  [[olen 1] addr])
+  [[olen 1] [addr MAC-ZERO]])
 
 (defclass [(ICMPv6NDOptType.register ICMPv6NDOptType.SrcAddr)] ICMPv6NDOptSrcAddr [ICMPv6NDOptAddr])
 (defclass [(ICMPv6NDOptType.register ICMPv6NDOptType.DstAddr)] ICMPv6NDOptDstAddr [ICMPv6NDOptAddr])
@@ -528,7 +532,7 @@
    [struct [prefix] :struct (async-name IPv6Addr)]]
   [[olen 4] [plen 64] [L 0] [A 0] [res1 0]
    [validlifetime 0xffffffff] [preferredtime 0xffffffff]
-   [res2 0] prefix])
+   [res2 0] [prefix IPv6-ZERO]])
 
 (defpacket [(ICMPv6NDOptType.register ICMPv6NDOptType.RMHead)] ICMPv6NDOPtRMHead [ICMPv6NDOptMixin]
   [[int olen :len 1]
@@ -551,7 +555,7 @@
   [[int [src dst] :len 2 :repeat 2]
    [int len :len 2]
    [int cksum :len 2]]
-  [src dst [len 0] [cksum 0]]
+  [[src 0] [dst 0] [len 0] [cksum 0]]
 
   (setv cksum-proto IPProto.UDP
         cksum-offset 6)
@@ -581,7 +585,7 @@
     :len (* (- dataofs 5) 4)
     :from (TCPOpt.pack it)
     :to (TCPOpt.unpack it)]]
-  [src dst [seq 0] [ack 0] [dataofs 0]
+  [[src 0] [dst 0] [seq 0] [ack 0] [dataofs 0]
    [res 0] [C 0] [E 0] [U 0] [A 0] [P 0] [R 0] [S 0] [F 0]
    [win 8192] [cksum 0] [uptr 0] [opts #()]]
 

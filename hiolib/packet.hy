@@ -3,6 +3,7 @@
   hiolib.struct *)
 
 (import
+  traceback
   hiolib.stream *
   hiolib.struct *)
 
@@ -48,16 +49,17 @@
 
   (defn [property] parse-next-class [self])
 
-  (defn [classmethod] parse [cls buf]
+  (defn [classmethod] parse [cls buf [debug False]]
     (let [reader (BIOStream buf)
           packet (cls #** (.unpack-dict-from-stream cls.struct reader))
           buf (.read-all reader)]
       (when buf
         (setv packet.next-packet
               (try
-                (.parse (or packet.parse-next-class Payload) buf)
+                (.parse (or packet.parse-next-class Payload) buf debug)
                 (except [Exception]
-                  (print (#/ traceback.format-exc))
+                  (when debug
+                    (print (traceback.format-exc)))
                   (Payload :data buf)))))
       packet))
 

@@ -55,9 +55,9 @@
     (while (.peek self.reader)
       (yield (.read-packet self))))
 
-  (defn read-parsed-packets [self]
+  (defn read-parsed-packets [self [debug False]]
     (import hiolib.util.inet :as inet)
-    (gfor packet (.read-packets self) (inet.Ether.parse (get packet -1)))))
+    (gfor packet (.read-packets self) (inet.Ether.parse (get packet -1) debug))))
 
 (defclass PcapWriter []
   (defn #-- init [self writer [magic PCAP-LE-MAGIC]]
