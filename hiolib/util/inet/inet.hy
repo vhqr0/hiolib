@@ -551,6 +551,9 @@
    [int mtu :len 4]]
   [[olen 1] [res 0] [mtu 1280]])
 
+(defclass UDPService [NextClassDict IntEnum]
+  (setv DNS 53))
+
 (defpacket [(IPProto.register IPProto.UDP)] UDP [CksumProxySelfMixin]
   [[int [src dst] :len 2 :repeat 2]
    [int len :len 2]
@@ -559,6 +562,10 @@
 
   (setv cksum-proto IPProto.UDP
         cksum-offset 6)
+
+  (defn [property] parse-next-class [self]
+    (or (.get UDPService self.dst)
+        (.get UDPService self.src)))
 
   (defn pre-build [self]
     (#super pre-build)
