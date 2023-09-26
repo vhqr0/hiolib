@@ -11,15 +11,108 @@
   hiolib.struct *
   hiolib.packet *)
 
+(defn enumlize [e enum-class]
+  (try (enum-class e) (except [Exception] e)))
+
 (defn int-replace [buf offset ilen i]
   (+ (cut buf offset)
      (int-pack i ilen)
      (cut buf (+ offset ilen) None)))
 
+(defclass Opt []
+  (defn [classmethod] pack-data [cls data]
+    (raise NotImplementedError))
+
+  (defn [classmethod] unpack-data [cls data]
+    (raise NotImplementedError)))
+
+(defclass IntOpt [Opt]
+  (setv ilen None
+        enum-class None)
+
+  (defn [classmethod] pack-data [cls data]
+    (int-pack data cls.ilen))
+
+  (defn [classmethod] unpack-data [cls data]
+    (if (= (len data) cls.ilen)
+        (let [i (int-unpack data)]
+          (if cls.enum-class (enumlize i cls.enum-class) i))
+        data)))
+
+(defclass SpliceStructOpt [Opt]
+  (defn [classmethod] pack-data [cls data]
+    (.pack cls data))
+
+  (defn [classmethod] unpack-data [cls data]
+    (get (.unpack cls data) 0)))
+
+(defclass StructOpt [Opt]
+  (defn [classmethod] pack-data [cls data]
+    (.pack cls #* data))
+
+  (defn [classmethod] unpack-data [cls data]
+    (.unpack cls data)))
+
+(defclass PacketOpt [Opt]
+  (defn [classmethod] pack-data [cls data]
+    (.build data))
+
+  (defn [classmethod] unpack-data [cls data]
+    (.parse cls data)))
+
+(defclass OptDict []
+  (defn #-- init-subclass [cls #* args #** kwargs]
+    (#super-- init-subclass #* args #** kwargs)
+    (setv cls._dict (dict)))
+
+  (defn [classmethod] register [cls type]
+    (defn wrapper [opt-class]
+      (setv (get cls._dict type) opt-class)
+      opt-class)
+    wrapper)
+
+  (defn [classmethod] pack-data [cls type data]
+    (if (isinstance data bytes) data (.pack-data (.get cls._dict type) data)))
+
+  (defn [classmethod] unpack-data [cls type data]
+    (let [opt-class (.get cls._dict type)]
+      (when opt-class
+        (try
+          (setv data (.unpack-data opt-class data))
+          (except [Exception]))))
+    data)
+
+  (defn [classmethod] get-struct [cls]
+    (raise NotImplementedError))
+
+  (defn [classmethod] get-opt [cls #* fields]
+    (raise NotImplementedError))
+
+  (defn [classmethod] get-fields [cls #* opt]
+    (raise NotImplementedError))
+
+  (defn [classmethod] pack-opt [cls opt]
+    (let [#(type #* args data) opt]
+      (.pack (.get-struct cls) #* (.get-fields cls type #* args (.pack-data cls type data)))))
+
+  (defn [classmethod] pack [cls opts]
+    (.join b"" (gfor opt opts (.pack-opt cls opt))))
+
+  (defn [classmethod] unpack-opt-from-stream [cls reader]
+    (let [fields (.unpack-from-stream (.get-struct cls) reader)
+          #(type #* args data) (.get-opt cls #* fields)]
+      #((enumlize type cls) #* args (.unpack-data cls type data))))
+
+  (defn [classmethod] unpack [cls buf]
+    (let [reader (BIOStream buf)
+          opts (list)]
+      (while (.peek reader)
+        (.append opts (.unpack-opt-from-stream cls reader)))
+      opts)))
+
 (defclass NextClassDict []
   (defn #-- init-subclass [cls #* args #** kwargs]
-    (unless (hasattr cls "_dict")
-      (setv cls._dict (dict))))
+    (setv cls._dict (dict)))
 
   (defn [classmethod] get [cls key]
     (.get cls._dict key))
@@ -115,21 +208,6 @@
             (setv packet.cksum s
                   self.pload (int-replace self.pload offset 2 s))))))))
 
-(defclass EtherType [NextClassDict IntEnum]
-  (setv ARP  0x0806
-        IPv4 0x0800
-        IPv6 0x86dd))
-
-(defclass IPProto [NextClassDict IntEnum]
-  (setv Frag     44
-        NoNext   59
-        HBHOpts   0
-        DestOpts 60
-        ICMPv4    1
-        ICMPv6   58
-        TCP       6
-        UDP      17))
-
 (setv MAC-ZERO "00:00:00:00:00:00"
       IPv4-ZERO "0.0.0.0"
       IPv6-ZERO "::")
@@ -158,6 +236,27 @@
     :from (socket.inet-pton socket.AF-INET6 it)
     :to (socket.inet-ntop socket.AF-INET6 it)]])
 
+(defstruct MACAddrs
+  [[struct addrs
+    :struct (async-name MACAddr)
+    :repeat-until (not (async-wait (.peek reader)))
+    :to-each (get it 0)
+    :from-each #(it)]])
+
+(defstruct IPv4Addrs
+  [[struct addrs
+    :struct (async-name IPv4Addr)
+    :repeat-until (not (async-wait (.peek reader)))
+    :to-each (get it 0)
+    :from-each #(it)]])
+
+(defstruct IPv6Addrs
+  [[struct addrs
+    :struct (async-name IPv6Addr)
+    :repeat-until (not (async-wait (.peek reader)))
+    :to-each (get it 0)
+    :from-each #(it)]])
+
 (defstruct IPv4CksumPhead
   [[struct [[src] [dst]] :struct (async-name IPv4Addr) :repeat 2]
    [int len :len 2]
@@ -168,48 +267,53 @@
    [int len :len 2]
    [int proto :len 2]])
 
+(defclass EtherType [NextClassDict IntEnum]
+  (setv ARP  0x0806
+        IPv4 0x0800
+        IPv6 0x86dd))
+
 (defpacket [] Ether [NextClassMixin]
   [[struct [[dst] [src]] :struct (async-name MACAddr) :repeat 2]
-   [int type :len 2]]
+   [int type :len 2 :to (enumlize it EtherType)]]
   [[dst MAC-ZERO] [src MAC-ZERO] [type 0]]
 
   (setv next-class-attr "type"
         next-class-dict EtherType))
 
-;;; used by IPv4Opt and TCPOpt
-(defclass InetOptMixin []
-  (defn [classmethod] unpack [cls buf]
-    (unless (= (% (len buf) 4) 0)
-      (raise ValueError))
-    (let [opts (list)
-          reader (BIOStream buf)]
-      (while (.peek reader)
-        (let [opt (int-unpack (.read-exactly reader 1))]
-          (cond (= opt cls.EOL)
-                (.append opts #(cls.EOL b""))
-                (= opt cls.NOP)
-                (.append opts #(cls.NOP b""))
-                True
-                (let [opt (try (cls opt) (except [Exception] opt))
-                      blen (int-unpack (.read-exactly reader 1))
-                      buf (.read-exactly reader (- blen 2))]
-                  (.append opts #(opt buf))))))
-      opts))
+(defclass IPProto [NextClassDict IntEnum]
+  (setv NoNext   59
+        Frag     44
+        HBHOpts   0
+        DestOpts 60
+        ICMPv4    1
+        ICMPv6   58
+        TCP       6
+        UDP      17))
+
+(defstruct InetOptStruct
+  [[int type :len 1]
+   [int olen :len (if (in type #(0 1)) 0 1)]
+   [bytes data :len (if (in type #(0 1)) 0 (- olen 2))]])
+
+;;; inherited by IPv4Opt and TCPOpt
+(defclass InetOpt [OptDict]
+  (defn [classmethod] get-struct [cls]
+    InetOptStruct)
+
+  (defn [classmethod] get-opt [cls type olen data]
+    #(type data))
+
+  (defn [classmethod] get-fields [cls type data]
+    #(type (if (in type #(0 1)) 0 (+ (len data) 2)) data))
 
   (defn [classmethod] pack [cls opts]
-    (let [bufs (list)]
-      (for [#(opt buf) opts]
-        (.append bufs (int-pack opt 1))
-        (unless (in opt #(cls.EOL cls.NOP))
-          (.append bufs (int-pack (+ (len buf) 2) 1))
-          (.append bufs buf)))
-      (let [buf (.join b"" bufs)
-            mod (% (len buf) 4)]
-        (unless (= mod 0)
-          (+= buf (bytes (- 4 mod))))
-        buf))))
+    (let [buf (#super pack opts)
+          mod (% (len buf) 4)]
+      (if (= mod 0)
+          buf
+          (+ buf (bytes (- 4 mod)))))))
 
-(defclass IPv4Opt [InetOptMixin IntEnum]
+(defclass IPv4Opt [InetOpt IntEnum]
   (setv EOL 0 NOP 1))
 
 (defpacket [(EtherType.register EtherType.IPv4)] IPv4
@@ -222,7 +326,7 @@
    [int id :len 2]
    [bits [res DF MF offset] :lens [1 1 1 13]]
    [int ttl :len 1]
-   [int proto :len 1]
+   [int proto :len 1 :to (enumlize it IPProto)]
    [int cksum :len 2]
    [struct [[src] [dst]] :struct (async-name IPv4Addr) :repeat 2]
    [bytes opts
@@ -251,43 +355,45 @@
       (setv self.cksum (cksum self.head)
             self.head (int-replace self.head 10 2 self.cksum)))))
 
-(defclass IPv6Opt [IntEnum]
+(defstruct IPv6OptStruct
+  [[int type :len 1]
+   [int dlen :len (if (= type 0) 0 1)]
+   [bytes data :len dlen]])
+
+(defclass IPv6Opt [OptDict IntEnum]
   (setv Pad1 0 PadN 1)
 
-  (defn [classmethod] unpack [cls buf]
-    (unless (= (% (+ (len buf) 2) 8) 0)
-      (raise ValueError))
-    (let [opts (list)
-          reader (BIOStream buf)]
-      (while (.peek reader)
-        (let [opt (int-unpack (.read-exactly reader 1))]
-          (if (= opt cls.Pad1)
-              (.append opts #(cls.Pad1 b""))
-              (let [blen (int-unpack (.read-exactly reader 1))
-                    buf (.read-exactly reader blen)]
-                (.append opts #((if (= opt cls.PadN) cls.PadN opt) buf))))))
-      opts))
+  (defn [classmethod] get-struct [cls]
+    IPv6OptStruct)
+
+  (defn [classmethod] get-opt [cls type dlen data]
+    #(type data))
+
+  (defn [classmethod] get-fields [cls type data]
+    #(type (len data) data))
 
   (defn [classmethod] pack [cls opts]
-    (let [bufs (list)]
-      (for [#(opt buf) opts]
-        (.append bufs (int-pack opt 1))
-        (unless (= opt cls.Pad1)
-          (.append bufs (int-pack (len buf) 1))
-          (.append bufs buf)))
-      (let [buf (.join b"" bufs)
-            mod (% (+ (len buf) 2) 8)]
-        (unless (= mod 0)
-          (let [n (- 8 mod)]
-            (if (= n 1)
-                (+= buf b"\x00")
-                (+= buf b"\x01" (int-pack (- n 2) 1) (bytes (- n 2))))))
-        buf))))
+    (let [buf (#super pack opts)
+          mod (% (+ (len buf) 2) 8)]
+      (cond (= mod 0)
+            buf
+            (= mod 7)
+            (+ buf b"\x00")
+            True
+            (let [n (- 6 mod)]
+              (+ buf b"\x01" (int-pack n 1) (bytes n)))))))
+
+(defstruct IPv6OptPadNStruct
+  [[all pad
+    :from (bytes (- it 2))
+    :to (+ (len it) 2)]])
+
+(defclass [(IPv6Opt.register IPv6Opt.PadN)] IPv6OptPadN [SpliceStructOpt IPv6OptPadNStruct])
 
 (defpacket [(EtherType.register EtherType.IPv6)] IPv6 [CksumPloadMixin NextClassMixin]
   [[bits [ver tc fl] :lens [4 8 20]]
    [int plen :len 2]
-   [int nh :len 1]
+   [int nh :len 1 :to (enumlize it IPProto)]
    [int hlim :len 1]
    [struct [[src] [dst]] :struct (async-name IPv6Addr) :repeat 2]]
   [[ver 6] [tc 0] [fl 0] [plen 0] [nh 0] [hlim 64] [src IPv6-ZERO] [dst IPv6-ZERO]]
@@ -303,6 +409,19 @@
     (when (= self.plen 0)
       (setv self.plen (len self.pload)))))
 
+(defpacket [(IPProto.register IPProto.Frag)] IPv6Frag
+  ;; other than the following exts, frag ext has no elen fields,
+  ;; therefore it isn't inherit from ipv6 ext mixin
+  [CksumProxyPloadMixin NextClassMixin]
+  [[int nh :len 1 :to (enumlize it IPProto)]
+   [int res1 :len 1]
+   [bits [offset res2 M] :lens [13 2 1]]
+   [int id :len 4]]
+  [[nh 0] [res1 0] [offset 0] [res2 0] [M 0] [id 0]]
+
+  (setv next-class-attr "nh"
+        next-class-dict IPProto))
+
 (defn ipv6-ext-datalen [elen]
   (- (* 8 (+ elen 1)) 2))
 
@@ -316,27 +435,8 @@
       (setv self.elen (- (// (len self.head) 8) 1)
             self.head (int-replace self.head 1 1 self.elen)))))
 
-(defpacket [(IPProto.register IPProto.Frag)] IPv6Frag
-  ;; other than the following exts, frag ext has no elen fields,
-  ;; therefore it isn't inherit from ipv6 ext mixin
-  [CksumProxyPloadMixin NextClassMixin]
-  [[int nh :len 1]
-   [int res1 :len 1]
-   [bits [offset res2 M] :lens [13 2 1]]
-   [int id :len 4]]
-  [[nh 0] [res1 0] [offset 0] [res2 0] [M 0] [id 0]]
-
-  (setv next-class-attr "nh"
-        next-class-dict IPProto))
-
-(defpacket [(IPProto.register IPProto.NoNext)] IPv6NoNext [IPv6ExtMixin]
-  [[int nh :len 1]
-   [int elen :len 1]
-   [int data :len (ipv6-ext-datalen elen)]]
-  [[nh 0] [elen 0] [data b""]])
-
 (defpacket [] IPv6Opts [IPv6ExtMixin]
-  [[int nh :len 1]
+  [[int nh :len 1 :to (enumlize it IPProto)]
    [int elen :len 1]
    [bytes opts
     :len (ipv6-ext-datalen elen)
@@ -355,7 +455,7 @@
    [int prototype :len 2]
    [int hwlen :len 1]
    [int protolen :len 1]
-   [int op :len 2]
+   [int op :len 2 :to (enumlize it ARPOp)]
    [struct [hwsrc] :struct (async-name MACAddr)]
    [struct [protosrc] :struct (async-name IPv4Addr)]
    [struct [hwdst] :struct (async-name MACAddr)]
@@ -388,7 +488,8 @@
         NDRM         137))
 
 (defpacket [(IPProto.register IPProto.ICMPv4)] ICMPv4 [NextClassMixin]
-  [[int [type code] :len 1 :repeat 2]
+  [[int type :len 1 :to (enumlize it ICMPv4Type)]
+   [int code :len 1]
    [int cksum :len 2]]
   [[type 0] [code 0] [cksum 0]]
 
@@ -415,7 +516,7 @@
   [[int unused :len 4]]
   [[unused 0]])
 
-(defpacket [] ICMPv4WithPacketPtr [ICMPv4WithPacketMixin]
+(defpacket [] ICMPv4WithPacketPTR [ICMPv4WithPacketMixin]
   [[int ptr :len 1] [int unused :len 3]]
   [[ptr 0] [unused 0]])
 
@@ -425,11 +526,12 @@
 
 (defclass [(ICMPv4Type.register ICMPv4Type.DestUnreach)]  ICMPv4DestUnreach  [ICMPv4WithPacket])
 (defclass [(ICMPv4Type.register ICMPv4Type.TimeExceeded)] ICMPv4TimeExceeded [ICMPv4WithPacket])
-(defclass [(ICMPv4Type.register ICMPv4Type.ParamProblem)] ICMPv4ParamProblem [ICMPv4WithPacketPtr])
+(defclass [(ICMPv4Type.register ICMPv4Type.ParamProblem)] ICMPv4ParamProblem [ICMPv4WithPacketPTR])
 (defclass [(ICMPv4Type.register ICMPv4Type.Redirect)]     ICMPv4Redirect     [ICMPv4WithPacketAddr])
 
 (defpacket [(IPProto.register IPProto.ICMPv6)] ICMPv6 [CksumProxySelfMixin NextClassMixin]
-  [[int [type code] :len 1 :repeat 2]
+  [[int type :len 1 :to (enumlize it ICMPv6Type)]
+   [int code :len 1]
    [int cksum :len 2]]
   [[type 0] [code 0] [cksum 0]]
 
@@ -453,21 +555,21 @@
   [[int unused :len 4]]
   [[unused 0]])
 
-(defpacket [] ICMPv6WithPacketMtu [ICMPv6WithPacketMixin]
+(defpacket [] ICMPv6WithPacketMTU [ICMPv6WithPacketMixin]
   [[int mtu :len 4]]
   [[mtu 1280]])
 
-(defpacket [] ICMPv6WithPacketPtr [ICMPv6WithPacketMixin]
+(defpacket [] ICMPv6WithPacketPTR [ICMPv6WithPacketMixin]
   [[int ptr :len 4]]
   [[ptr 0]])
 
 (defclass [(ICMPv6Type.register ICMPv6Type.DestUnreach)]  ICMPv6DestUnreach  [ICMPv6WithPacket])
-(defclass [(ICMPv6Type.register ICMPv6Type.DestUnreach)]  ICMPv6PacketTooBig [ICMPv6WithPacketMtu])
+(defclass [(ICMPv6Type.register ICMPv6Type.DestUnreach)]  ICMPv6PacketTooBig [ICMPv6WithPacketMTU])
 (defclass [(ICMPv6Type.register ICMPv6Type.TimeExceeded)] ICMPv6TimeExceeded [ICMPv6WithPacket])
-(defclass [(ICMPv6Type.register ICMPv6Type.ParamProblem)] ICMPv6ParamProblem [ICMPv6WithPacketPtr])
+(defclass [(ICMPv6Type.register ICMPv6Type.ParamProblem)] ICMPv6ParamProblem [ICMPv6WithPacketPTR])
 
 (defclass ICMPv6ND []
-  (defn [property] parse-next-class [self] ICMPv6NDOpt))
+  (defn [property] parse-next-class [self] ICMPv6NDOpts))
 
 (defpacket [(ICMPv6Type.register ICMPv6Type.NDRS)] ICMPv6NDRS [ICMPv6ND]
   [[int res :len 4]]
@@ -497,62 +599,61 @@
    [struct [[tgt] [dst]] :struct (async-name IPv6Addr) :repeat 2]]
   [[res 0] [tgt IPv6-ZERO] [dst IPv6-ZERO]])
 
-(defclass ICMPv6NDOptType [NextClassDict IntEnum]
+(defstruct ICMPv6NDOptStruct
+  [[int type :len 1]
+   [int olen :len 1]
+   [bytes data :len (- (* 8 olen) 2)]])
+
+(defclass ICMPv6NDOpt [OptDict IntEnum]
   (setv SrcAddr 1
         DstAddr 2
         Prefix  3
         RMHead  4
-        MTU     5))
+        MTU     5)
 
-(defpacket [] ICMPv6NDOpt [NextClassMixin]
-  [[int type :len 1]]
-  [[type 0]]
+  (defn [classmethod] get-struct [self]
+    ICMPv6NDOptStruct)
 
-  (setv next-class-attr "type"
-        next-class-dict ICMPv6NDOptType))
+  (defn [classmethod] get-opt [cls type olen data]
+    #(type data))
 
-(defclass ICMPv6NDOptMixin []
-  (defn [property] parse-next-class [self] ICMPv6NDOpt))
+  (defn [classmethod] get-fields [cls type data]
+    #(type (// (+ (len data) 2) 8) data)))
 
-(defpacket [] ICMPv6NDOptAddr [ICMPv6NDOptMixin]
-  [[int olen :len 1]
-   [struct [addr] :struct (async-name MACAddr)]]
-  [[olen 1] [addr MAC-ZERO]])
+(defclass [(ICMPv6NDOpt.register ICMPv6NDOpt.SrcAddr)] ICMPv6NDOptSrcAddr [SpliceStructOpt MACAddr])
+(defclass [(ICMPv6NDOpt.register ICMPv6NDOpt.DstAddr)] ICMPv6NDOptDstAddr [SpliceStructOpt MACAddr])
 
-(defclass [(ICMPv6NDOptType.register ICMPv6NDOptType.SrcAddr)] ICMPv6NDOptSrcAddr [ICMPv6NDOptAddr])
-(defclass [(ICMPv6NDOptType.register ICMPv6NDOptType.DstAddr)] ICMPv6NDOptDstAddr [ICMPv6NDOptAddr])
-
-(defpacket [(ICMPv6NDOptType.register ICMPv6NDOptType.Prefix)] ICMPv6NDOptPrefix [ICMPv6NDOptMixin]
-  [[int olen :len 1]
-   [int plen :len 1]
+(defpacket [(ICMPv6NDOpt.register ICMPv6NDOpt.Prefix)] ICMPv6NDOptPrefix [PacketOpt]
+  [[int plen :len 1]
    [bits [L A res1] :lens [1 1 6]]
    [int validlifetime :len 4]
    [int preferredtime :len 4]
    [int res2 :len 4]
    [struct [prefix] :struct (async-name IPv6Addr)]]
-  [[olen 4] [plen 64] [L 0] [A 0] [res1 0]
+  [[plen 64] [L 0] [A 0] [res1 0]
    [validlifetime 0xffffffff] [preferredtime 0xffffffff]
    [res2 0] [prefix IPv6-ZERO]])
 
-(defpacket [(ICMPv6NDOptType.register ICMPv6NDOptType.RMHead)] ICMPv6NDOPtRMHead [ICMPv6NDOptMixin]
-  [[int olen :len 1]
-   [int res :len 6]
-   [bytes data :len (* (- olen 1) 8)]]
-  [[olen 0] [res 0] [data b""]]
+(defpacket [(ICMPv6NDOpt.register ICMPv6NDOpt.RMHead)] ICMPv6NDOptRMHead [PacketOpt]
+  [[int res :len 6]]
+  [[res 0]]
+  (defn [property] parse-next-class [self] IPv6Error))
 
-  (defn pre-build [self]
-    (#super pre-build)
-    (when (= self.olen 0)
-      (setv self.olen (+ (// (len self.data) 8) 1)))))
+(defclass [(ICMPv6NDOpt.register ICMPv6NDOpt.MTU)] ICMPv6NDOptMTU [IntOpt]
+  (setv ilen 6))
 
-(defpacket [(ICMPv6NDOptType.register ICMPv6NDOptType.MTU)] ICMPv6NDOptMTU [ICMPv6NDOptMixin]
-  [[int olen :len 1]
-   [int res :len 2]
-   [int mtu :len 4]]
-  [[olen 1] [res 0] [mtu 1280]])
+(defpacket [] ICMPv6NDOpts []
+  [[all opts
+    :from (ICMPv6NDOpt.pack it)
+    :to (ICMPv6NDOpt.unpack it)]]
+  [[opts #()]])
 
 (defclass UDPService [NextClassDict IntEnum]
-  (setv DNS 53))
+  (setv DNS        53
+        DHCPv4Cli  67
+        DHCPv4Srv  68
+        DHCPv6Cli 546
+        DHCPv6Srv 547))
 
 (defpacket [(IPProto.register IPProto.UDP)] UDP [CksumProxySelfMixin]
   [[int [src dst] :len 2 :repeat 2]
@@ -572,14 +673,31 @@
     (when (= self.len 0)
       (setv self.len (+ 8 (len self.pload))))))
 
-(defclass TCPOpt [InetOptMixin IntEnum]
-  (setv EOL  0
-        NOP  1
-        MSS  2
-        WS   3
-        SAOK 4
-        SA   5
-        TS   8))
+(defclass TCPOpt [InetOpt IntEnum]
+  (setv EOL    0
+        NOP    1
+        MSS    2
+        WS     3
+        SAckOK 4
+        SAck   5
+        TS     8))
+
+(defclass [(TCPOpt.register TCPOpt.MSS)] TCPOptMSS [IntOpt]
+  (setv ilen 2))
+
+(defclass [(TCPOpt.register TCPOpt.WS)] TCPOptWS [IntOpt]
+  (setv ilen 1))
+
+(defstruct TCPOptSAckStruct
+  [[int edges :len 4 :repeat-until (not (async-wait (.peek reader)))]])
+
+(defclass [(TCPOpt.register TCPOpt.SAck)] TCPOptSAck [SpliceStructOpt TCPOptSAckStruct])
+
+(defstruct TCPOptTSStruct
+  [[int tsval :len 4]
+   [int tsecr :len 4]])
+
+(defclass [(TCPOpt.register TCPOpt.TS)] TCPOptTS [StructOpt TCPOptTSStruct])
 
 (defpacket [(IPProto.register IPProto.TCP)] TCP [CksumProxySelfMixin]
   [[int [src dst] :len 2 :repeat 2]

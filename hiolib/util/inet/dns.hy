@@ -9,7 +9,7 @@
   hiolib.packet *
   hiolib.util.inet.inet *)
 
-(defclass DNSQtype [IntEnum]
+(defclass DNSType [OptDict IntEnum]
   (setv CNAME  5
         A      1
         AAAA  28
@@ -62,15 +62,25 @@
                 True
                 (.append subnames (async-wait (.read-exactly reader nlen)))))))))
 
+(defstruct DNSNames
+  [[struct names
+    :struct (async-name DNSName)
+    :repeat-until (not (async-wait (.peek reader)))
+    :to-each (get it 0)
+    :from-each #(it)]])
+
 (defstruct DNSQR
   [[struct [name] :struct (async-name DNSName)]
-   [int qtype :len 2]
-   [int qclass :len 2]])
+   [int type :len 2 :to (enumlize it DNSType)]
+   [int cls :len 2]])
 
 (defstruct DNSRR
-  [[struct [name qtype qclass] :struct (async-name DNSQR)]
+  [[struct [name type cls] :struct (async-name DNSQR)]
    [int ttl :len 4]
-   [varlen rdata :len 2]])
+   [varlen data
+    :len 2
+    :from (DNSType.pack-data type it)
+    :to (DNSType.unpack-data type it)]])
 
 (defpacket [(UDPService.register UDPService.DNS)] DNS []
   [[int id :len 2]
@@ -97,3 +107,25 @@
       (setv self.nscount (len self.ns)))
     (when (= self.arcount 0)
       (setv self.arcount (len self.ar)))))
+
+(defclass [(DNSType.register DNSType.CNAME)] DNSTypeCNAME [SpliceStructOpt DNSName])
+(defclass [(DNSType.register DNSType.A)]     DNSTypeA     [SpliceStructOpt IPv4Addr])
+(defclass [(DNSType.register DNSType.AAAA)]  DNSTypeAAAA  [SpliceStructOpt IPv6Addr])
+(defclass [(DNSType.register DNSType.PTR)]   DNSTypePTR   [SpliceStructOpt DNSName])
+(defclass [(DNSType.register DNSType.NS)]    DNSTypeNS    [SpliceStructOpt DNSName])
+
+(defpacket [(DNSType.register DNSType.SOA)] DNSTypeSOA [PacketOpt]
+  [[struct [[mname] [rname]] :struct (async-name DNSName) :repeat 2]
+   [int serial :len 4]
+   [int refresh :len 4]
+   [int retry :len 4]
+   [int expire :len 4]
+   [int minimum :len 4]]
+  [[mname ""] [rname ""]
+   [serial 0] [refresh 0] [retry 0] [expire 0] [minimum 0]])
+
+(defstruct DNSTypeMXStruct
+  [[int pref :len 2]
+   [struct [name] :struct (async-name DNSName)]])
+
+(defclass [(DNSType.register DNSType.MX)] DNSTypeMX [StructOpt DNSTypeMXStruct])
