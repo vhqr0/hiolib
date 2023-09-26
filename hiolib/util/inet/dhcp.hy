@@ -197,7 +197,7 @@
    [struct [opts] :struct (async-name DHCPv6Opts)]]
   [[iaid 0] [preftime 0] [validtime 0] [opts #()]])
 
-(defpacket [(DHCPv6Opt.register DHCPv6Opt.IAPrefix) DHCPv6OptIAPrefix [PacketOpt]]
+(defpacket [(DHCPv6Opt.register DHCPv6Opt.IAPrefix)] DHCPv6OptIAPrefix [PacketOpt]
   [[int preftime :len 4]
    [int validtime :len 4]
    [int plen :len 1]
