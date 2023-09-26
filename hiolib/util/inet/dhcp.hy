@@ -143,7 +143,7 @@
         NTPServer   56)
 
   (defn [classmethod] get-struct [cls]
-    DHCPv4OptStruct)
+    DHCPv6OptStruct)
 
   (defn [classmethod] get-opt [cls type data]
     #(type data))
@@ -207,7 +207,7 @@
 
 (defstruct DHCPv6OptReqOptStruct
   [[int opts
-    :len 1
+    :len 2
     :repeat-until (not (async-wait (.peek reader)))
     :to-each (enumlize it DHCPv6Opt)]])
 
