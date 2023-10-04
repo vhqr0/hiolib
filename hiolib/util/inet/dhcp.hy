@@ -57,8 +57,12 @@
   (defn [classmethod] get-fields [cls type data]
     #(type (len data) data)))
 
-(defpacket [(UDPService.register UDPService.DHCPv4Cli)
-            (UDPService.register UDPService.DHCPv4Srv)] DHCPv4 []
+(defstruct DHCPv4OptsStruct
+  [[all opts
+    :from (DHCPv4Opt.pack it)
+    :to (DHCPv4Opt.unpack it)]])
+
+(defpacket [(UDPService.register UDPService.DHCPv4Cli UDPService.DHCPv4Srv)] DHCPv4 []
   [[int op :len 1 :to (enumlize it DHCPv4Op)]
    [int htype :len 1]
    [int hlen :len 1]
@@ -72,9 +76,7 @@
    [bytes sname :len 64]
    [bytes file :len 128]
    [bytes magic :len 4]
-   [all opts
-    :from (DHCPv4Opt.pack it)
-    :to (DHCPv4Opt.unpack it)]]
+   [struct [opts] :struct (async-name DHCPv4OptsStruct)]]
   [[op DHCPv4Op.Req] [htype 1] [hlen 6] [hops 0] [xid 0] [secs 0] [flags 0]
    [ciaddr IPv4-ZERO] [yiaddr IPv4-ZERO] [siaddr IPv4-ZERO] [giaddr IPv4-ZERO]
    [chaddr MAC-ZERO] [pad (bytes 10)] [sname (bytes 64)] [file (bytes 128)]
@@ -151,16 +153,15 @@
   (defn [classmethod] get-fields [cls type data]
     #(type data)))
 
-(defstruct DHCPv6Opts
+(defstruct DHCPv6OptsStruct
   [[all opts
     :from (DHCPv6Opt.pack it)
     :to (DHCPv6Opt.unpack it)]])
 
-(defpacket [(UDPService.register UDPService.DHCPv6Cli)
-            (UDPService.register UDPService.DHCPv6Srv)] DHCPv6 []
+(defpacket [(UDPService.register UDPService.DHCPv6Cli UDPService.DHCPv6Cli)] DHCPv6 []
   [[int type :len 1 :to (enumlize it DHCPv6MsgType)]
    [int xid :len 3]
-   [struct [opts] :struct (async-name DHCPv6Opts)]]
+   [struct [opts] :struct (async-name DHCPv6OptsStruct)]]
   [[type DHCPv6MsgType.Solicit] [xid 0] [opts #()]])
 
 (defstruct DHCPv6OptStatusStruct
@@ -175,26 +176,26 @@
   [[int iaid :len 4]
    [int T1 :len 4]
    [int T2 :len 4]
-   [struct [opts] :struct (async-name DHCPv6Opts)]]
+   [struct [opts] :struct (async-name DHCPv6OptsStruct)]]
   [[iaid 0] [T1 0] [T2 0] [opts #()]])
 
 (defpacket [(DHCPv6Opt.register DHCPv6Opt.IATA)] DHCPv6OptIATA [PacketOpt]
   [[int iaid :len 4]
-   [struct [opts] :struct (async-name DHCPv6Opts)]]
+   [struct [opts] :struct (async-name DHCPv6OptsStruct)]]
   [[iaid 0] [opts #()]])
 
 (defpacket [(DHCPv6Opt.register DHCPv6Opt.IAPD)] DHCPv6OptIAPD [PacketOpt]
   [[int iaid :len 4]
    [int T1 :len 4]
    [int T2 :len 4]
-   [struct [opts] :struct (async-name  DHCPv6Opts)]]
+   [struct [opts] :struct (async-name  DHCPv6OptsStruct)]]
   [[iaid 0] [T1 0] [T2 0] [opts #()]])
 
 (defpacket [(DHCPv6Opt.register DHCPv6Opt.IAAddr)] DHCPv6OptIAAddr [PacketOpt]
   [[struct [addr] :struct (async-name IPv6Addr)]
    [int preftime :len 4]
    [int validtime :len 4]
-   [struct [opts] :struct (async-name DHCPv6Opts)]]
+   [struct [opts] :struct (async-name DHCPv6OptsStruct)]]
   [[iaid 0] [preftime 0] [validtime 0] [opts #()]])
 
 (defpacket [(DHCPv6Opt.register DHCPv6Opt.IAPrefix)] DHCPv6OptIAPrefix [PacketOpt]
@@ -202,7 +203,7 @@
    [int validtime :len 4]
    [int plen :len 1]
    [struct [prefix] :struct (async-name IPv6Addr)]
-   [struct [opts] :struct (async-name DHCPv6Opts)]]
+   [struct [opts] :struct (async-name DHCPv6OptsStruct)]]
   [[preftime 0] [validtime 0] [plen 64] [prefix IPv6-ZERO] [opts #()]])
 
 (defstruct DHCPv6OptReqOptStruct

@@ -10,14 +10,15 @@
   hiolib.util.inet.inet *)
 
 (defclass DNSType [OptDict IntEnum]
-  (setv CNAME  5
-        A      1
-        AAAA  28
-        PTR   12
-        NS     2
-        SOA    6
-        MX    15
-        TXT   16))
+  (setv CNAME   5
+        A       1
+        AAAA   28
+        PTR    12
+        NS      2
+        SOA     6
+        MX     15
+        TXT    16
+        ANY   255))
 
 (defclass DNSRcode [IntEnum]
   (setv NoError     0
@@ -82,7 +83,7 @@
     :from (DNSType.pack-data type it)
     :to (DNSType.unpack-data type it)]])
 
-(defpacket [(UDPService.register UDPService.DNS)] DNS []
+(defpacket [(UDPService.register UDPService.DNS UDPService.MDNS UDPService.LLMNR)] DNS []
   [[int id :len 2]
    [bits [qr op aa tc rd ra z rcode] :lens [1 4 1 1 1 1 3 4]]
    [int qdcount :len 2]

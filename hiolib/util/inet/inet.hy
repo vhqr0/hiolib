@@ -65,9 +65,10 @@
     (#super-- init-subclass #* args #** kwargs)
     (setv cls._dict (dict)))
 
-  (defn [classmethod] register [cls type]
+  (defn [classmethod] register [cls #* types]
     (defn wrapper [opt-class]
-      (setv (get cls._dict type) opt-class)
+      (for [type types]
+        (setv (get cls._dict type) opt-class))
       opt-class)
     wrapper)
 
@@ -122,9 +123,10 @@
       (when (isinstance next-packet next-class)
         (return key))))
 
-  (defn [classmethod] register [cls key]
+  (defn [classmethod] register [cls #* keys]
     (defn wrapper [next-class]
-      (setv (get cls._dict key) next-class)
+      (for [key keys]
+        (setv (get cls._dict key) next-class))
       next-class)
     wrapper))
 
@@ -568,37 +570,6 @@
 (defclass [(ICMPv6Type.register ICMPv6Type.TimeExceeded)] ICMPv6TimeExceeded [ICMPv6WithPacket])
 (defclass [(ICMPv6Type.register ICMPv6Type.ParamProblem)] ICMPv6ParamProblem [ICMPv6WithPacketPTR])
 
-(defclass ICMPv6ND []
-  (defn [property] parse-next-class [self] ICMPv6NDOpts))
-
-(defpacket [(ICMPv6Type.register ICMPv6Type.NDRS)] ICMPv6NDRS [ICMPv6ND]
-  [[int res :len 4]]
-  [[res 0]])
-
-(defpacket [(ICMPv6Type.register ICMPv6Type.NDRA)] ICMPv6NDRA [ICMPv6ND]
-  [[int hlim :len 1]
-   [bits [M O res] :lens [1 1 6]]
-   [int routerlifetime :len 2]
-   [int reachabletime :len 4]
-   [int retranstimer :len 4]]
-  [[hlim 0] [M 0] [O 0] [res 0] [routerlifetime 1800]
-   [reachabletime 0] [retranstimer 0]])
-
-(defpacket [(ICMPv6Type.register ICMPv6Type.NDNS)] ICMPv6NDNS [ICMPv6ND]
-  [[int res :len 4]
-   [struct [tgt] :struct (async-name IPv6Addr)]]
-  [[res 0] [tgt IPv6-ZERO]])
-
-(defpacket [(ICMPv6Type.register ICMPv6Type.NDNA)] ICMPv6NDNA [ICMPv6ND]
-  [[bits [R S O res] :lens [1 1 1 29]]
-   [struct [tgt] :struct (async-name IPv6Addr)]]
-  [[R 0] [S 0] [O 0] [res 0] [tgt IPv6-ZERO]])
-
-(defpacket [(ICMPv6Type.register ICMPv6Type.NDRM)] ICMPv6NDRM [ICMPv6ND]
-  [[int res :len 4]
-   [struct [[tgt] [dst]] :struct (async-name IPv6Addr) :repeat 2]]
-  [[res 0] [tgt IPv6-ZERO] [dst IPv6-ZERO]])
-
 (defstruct ICMPv6NDOptStruct
   [[int type :len 1]
    [int olen :len 1]
@@ -619,6 +590,44 @@
 
   (defn [classmethod] get-fields [cls type data]
     #(type (// (+ (len data) 2) 8) data)))
+
+(defstruct ICMPv6NDOptsStruct
+  [[all opts
+    :from (ICMPv6NDOpt.pack it)
+    :to (ICMPv6NDOpt.unpack it)]])
+
+(defpacket [(ICMPv6Type.register ICMPv6Type.NDRS)] ICMPv6NDRS []
+  [[int res :len 4]
+   [struct [opts] :struct (async-name ICMPv6NDOptsStruct)]]
+  [[res 0] [opts #()]])
+
+(defpacket [(ICMPv6Type.register ICMPv6Type.NDRA)] ICMPv6NDRA []
+  [[int hlim :len 1]
+   [bits [M O res] :lens [1 1 6]]
+   [int routerlifetime :len 2]
+   [int reachabletime :len 4]
+   [int retranstimer :len 4]
+   [struct [opts] :struct (async-name ICMPv6NDOptsStruct)]]
+  [[hlim 0] [M 0] [O 0] [res 0] [routerlifetime 1800]
+   [reachabletime 0] [retranstimer 0] [opts #()]])
+
+(defpacket [(ICMPv6Type.register ICMPv6Type.NDNS)] ICMPv6NDNS []
+  [[int res :len 4]
+   [struct [tgt] :struct (async-name IPv6Addr)]
+   [struct [opts] :struct (async-name ICMPv6NDOptsStruct)]]
+  [[res 0] [tgt IPv6-ZERO] [opts #()]])
+
+(defpacket [(ICMPv6Type.register ICMPv6Type.NDNA)] ICMPv6NDNA []
+  [[bits [R S O res] :lens [1 1 1 29]]
+   [struct [tgt] :struct (async-name IPv6Addr)]
+   [struct [opts] :struct (async-name ICMPv6NDOptsStruct)]]
+  [[R 0] [S 0] [O 0] [res 0] [tgt IPv6-ZERO] [opts #()]])
+
+(defpacket [(ICMPv6Type.register ICMPv6Type.NDRM)] ICMPv6NDRM []
+  [[int res :len 4]
+   [struct [[tgt] [dst]] :struct (async-name IPv6Addr) :repeat 2]
+   [struct [opts] :struct (async-name ICMPv6NDOptsStruct)]]
+  [[res 0] [tgt IPv6-ZERO] [dst IPv6-ZERO] [opts #()]])
 
 (defclass [(ICMPv6NDOpt.register ICMPv6NDOpt.SrcAddr)] ICMPv6NDOptSrcAddr [SpliceStructOpt MACAddr])
 (defclass [(ICMPv6NDOpt.register ICMPv6NDOpt.DstAddr)] ICMPv6NDOptDstAddr [SpliceStructOpt MACAddr])
@@ -642,18 +651,14 @@
 (defclass [(ICMPv6NDOpt.register ICMPv6NDOpt.MTU)] ICMPv6NDOptMTU [IntOpt]
   (setv ilen 6))
 
-(defpacket [] ICMPv6NDOpts []
-  [[all opts
-    :from (ICMPv6NDOpt.pack it)
-    :to (ICMPv6NDOpt.unpack it)]]
-  [[opts #()]])
-
 (defclass UDPService [NextClassDict IntEnum]
-  (setv DNS        53
-        DHCPv4Cli  67
-        DHCPv4Srv  68
-        DHCPv6Cli 546
-        DHCPv6Srv 547))
+  (setv DNS         53
+        MDNS      5353
+        LLMNR     5355
+        DHCPv4Cli   67
+        DHCPv4Srv   68
+        DHCPv6Cli  546
+        DHCPv6Srv  547))
 
 (defpacket [(IPProto.register IPProto.UDP)] UDP [CksumProxySelfMixin]
   [[int [src dst] :len 2 :repeat 2]
