@@ -566,7 +566,7 @@
   [[ptr 0]])
 
 (defclass [(ICMPv6Type.register ICMPv6Type.DestUnreach)]  ICMPv6DestUnreach  [ICMPv6WithPacket])
-(defclass [(ICMPv6Type.register ICMPv6Type.DestUnreach)]  ICMPv6PacketTooBig [ICMPv6WithPacketMTU])
+(defclass [(ICMPv6Type.register ICMPv6Type.PacketTooBig)] ICMPv6PacketTooBig [ICMPv6WithPacketMTU])
 (defclass [(ICMPv6Type.register ICMPv6Type.TimeExceeded)] ICMPv6TimeExceeded [ICMPv6WithPacket])
 (defclass [(ICMPv6Type.register ICMPv6Type.ParamProblem)] ICMPv6ParamProblem [ICMPv6WithPacketPTR])
 
