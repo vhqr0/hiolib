@@ -109,11 +109,11 @@
     (when (= self.arcount 0)
       (setv self.arcount (len self.ar)))))
 
-(defclass [(DNSType.register DNSType.CNAME)] DNSTypeCNAME [SpliceStructOpt DNSName])
-(defclass [(DNSType.register DNSType.A)]     DNSTypeA     [SpliceStructOpt IPv4Addr])
-(defclass [(DNSType.register DNSType.AAAA)]  DNSTypeAAAA  [SpliceStructOpt IPv6Addr])
-(defclass [(DNSType.register DNSType.PTR)]   DNSTypePTR   [SpliceStructOpt DNSName])
-(defclass [(DNSType.register DNSType.NS)]    DNSTypeNS    [SpliceStructOpt DNSName])
+(defclass [(DNSType.register DNSType.CNAME)] DNSTypeCNAME [AtomStructOpt DNSName])
+(defclass [(DNSType.register DNSType.A)]     DNSTypeA     [AtomStructOpt IPv4Addr])
+(defclass [(DNSType.register DNSType.AAAA)]  DNSTypeAAAA  [AtomStructOpt IPv6Addr])
+(defclass [(DNSType.register DNSType.PTR)]   DNSTypePTR   [AtomStructOpt DNSName])
+(defclass [(DNSType.register DNSType.NS)]    DNSTypeNS    [AtomStructOpt DNSName])
 
 (defpacket [(DNSType.register DNSType.SOA)] DNSTypeSOA [PacketOpt]
   [[struct [[mname] [rname]] :struct (async-name DNSName) :repeat 2]

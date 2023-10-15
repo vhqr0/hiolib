@@ -86,7 +86,7 @@
   (setv ilen 1
         enum-class DHCPv4MsgType))
 
-(defclass [(DHCPv4Opt.register DHCPv4Opt.ReqAddr)] DHCPv4OptReqAddr [SpliceStructOpt IPv4Addr])
+(defclass [(DHCPv4Opt.register DHCPv4Opt.ReqAddr)] DHCPv4OptReqAddr [AtomStructOpt IPv4Addr])
 
 (defstruct DHCPv4OptReqParamStruct
   [[int params
@@ -94,15 +94,15 @@
     :repeat-until (not (async-wait (.peek reader)))
     :to-each (enumlize it DHCPv4Opt)]])
 
-(defclass [(DHCPv4Opt.register DHCPv4Opt.ReqParam)] DHCPv4OptReqParam [SpliceStructOpt DHCPv4OptReqParamStruct])
+(defclass [(DHCPv4Opt.register DHCPv4Opt.ReqParam)] DHCPv4OptReqParam [AtomStructOpt DHCPv4OptReqParamStruct])
 
 (defclass [(DHCPv4Opt.register DHCPv4Opt.LeaseTime)]   DHCPv4OptLeaseTime   [IntOpt] (setv ilen 4))
 (defclass [(DHCPv4Opt.register DHCPv4Opt.RenewalTime)] DHCPv4OptRenewalTime [IntOpt] (setv ilen 4))
 (defclass [(DHCPv4Opt.register DHCPv4Opt.RebindTime)]  DHCPv4OptRebindTime  [IntOpt] (setv ilen 4))
 
-(defclass [(DHCPv4Opt.register DHCPv4Opt.SubnetMask)] DHCPv4OptSubnetMask [SpliceStructOpt IPv4Addr])
-(defclass [(DHCPv4Opt.register DHCPv4Opt.Router)]     DHCPv4OptRouter     [SpliceStructOpt IPv4Addrs])
-(defclass [(DHCPv4Opt.register DHCPv4Opt.DNSServer)]  DHCPv4OptDNSServer  [SpliceStructOpt IPv4Addrs])
+(defclass [(DHCPv4Opt.register DHCPv4Opt.SubnetMask)] DHCPv4OptSubnetMask [AtomStructOpt IPv4Addr])
+(defclass [(DHCPv4Opt.register DHCPv4Opt.Router)]     DHCPv4OptRouter     [AtomStructOpt IPv4Addrs])
+(defclass [(DHCPv4Opt.register DHCPv4Opt.DNSServer)]  DHCPv4OptDNSServer  [AtomStructOpt IPv4Addrs])
 
 (defclass DHCPv6MsgType [IntEnum]
   (setv Solicit    1
@@ -212,11 +212,11 @@
     :repeat-until (not (async-wait (.peek reader)))
     :to-each (enumlize it DHCPv6Opt)]])
 
-(defclass [(DHCPv6Opt.register DHCPv6Opt.ReqOpt)] DHCPv6OptReqOpt [SpliceStructOpt DHCPv6OptReqOptStruct])
+(defclass [(DHCPv6Opt.register DHCPv6Opt.ReqOpt)] DHCPv6OptReqOpt [AtomStructOpt DHCPv6OptReqOptStruct])
 
 (defclass [(DHCPv6Opt.register DHCPv6Opt.ElapsedTime)] DHCPv6OptElapsedTime [IntOpt] (setv ilen 2))
 (defclass [(DHCPv6Opt.register DHCPv6Opt.RefreshTime)] DHCPv6OptRefreshTime [IntOpt] (setv ilen 4))
 
-(defclass [(DHCPv6Opt.register DHCPv6Opt.DNSServer)] DHCPv6OptDNSServer [SpliceStructOpt IPv6Addrs])
-(defclass [(DHCPv6Opt.register DHCPv6Opt.DNSSearch)] DHCPv6OptDNSSearch [SpliceStructOpt DNSNames])
-(defclass [(DHCPv6Opt.register DHCPv6Opt.NTPServer)] DHCPv6OptNTPServer [SpliceStructOpt IPv6Addrs])
+(defclass [(DHCPv6Opt.register DHCPv6Opt.DNSServer)] DHCPv6OptDNSServer [AtomStructOpt IPv6Addrs])
+(defclass [(DHCPv6Opt.register DHCPv6Opt.DNSSearch)] DHCPv6OptDNSSearch [AtomStructOpt DNSNames])
+(defclass [(DHCPv6Opt.register DHCPv6Opt.NTPServer)] DHCPv6OptNTPServer [AtomStructOpt IPv6Addrs])

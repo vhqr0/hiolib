@@ -46,7 +46,7 @@
           (if cls.enum-class (enumlize i cls.enum-class) i))
         data)))
 
-(defclass SpliceStructOpt [Opt]
+(defclass AtomStructOpt [Opt]
   (defn [classmethod] pack-data [cls data]
     (.pack cls data))
 
@@ -397,7 +397,7 @@
     :from (bytes (- it 2))
     :to (+ (len it) 2)]])
 
-(defclass [(IPv6Opt.register IPv6Opt.PadN)] IPv6OptPadN [SpliceStructOpt IPv6OptPadNStruct])
+(defclass [(IPv6Opt.register IPv6Opt.PadN)] IPv6OptPadN [AtomStructOpt IPv6OptPadNStruct])
 
 (defpacket [(EtherType.register EtherType.IPv6)] IPv6 [CksumPloadMixin NextClassMixin]
   [[bits [ver tc fl] :lens [4 8 20]]
@@ -636,8 +636,8 @@
    [struct [opts] :struct (async-name ICMPv6NDOptsStruct)]]
   [[res 0] [tgt IPv6-ZERO] [dst IPv6-ZERO] [opts #()]])
 
-(defclass [(ICMPv6NDOpt.register ICMPv6NDOpt.SrcAddr)] ICMPv6NDOptSrcAddr [SpliceStructOpt MACAddr])
-(defclass [(ICMPv6NDOpt.register ICMPv6NDOpt.DstAddr)] ICMPv6NDOptDstAddr [SpliceStructOpt MACAddr])
+(defclass [(ICMPv6NDOpt.register ICMPv6NDOpt.SrcAddr)] ICMPv6NDOptSrcAddr [AtomStructOpt MACAddr])
+(defclass [(ICMPv6NDOpt.register ICMPv6NDOpt.DstAddr)] ICMPv6NDOptDstAddr [AtomStructOpt MACAddr])
 
 (defpacket [(ICMPv6NDOpt.register ICMPv6NDOpt.Prefix)] ICMPv6NDOptPrefix [PacketOpt]
   [[int plen :len 1]
@@ -703,7 +703,7 @@
 (defstruct TCPOptSAckStruct
   [[int edges :len 4 :repeat-until (not (async-wait (.peek reader)))]])
 
-(defclass [(TCPOpt.register TCPOpt.SAck)] TCPOptSAck [SpliceStructOpt TCPOptSAckStruct])
+(defclass [(TCPOpt.register TCPOpt.SAck)] TCPOptSAck [AtomStructOpt TCPOptSAckStruct])
 
 (defstruct TCPOptTSStruct
   [[int tsval :len 4]
