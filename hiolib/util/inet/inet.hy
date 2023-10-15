@@ -7,12 +7,19 @@
   socket
   ctypes [c-ushort]
   enum [IntEnum]
+  traceback
   hiolib.stream *
   hiolib.struct *
-  hiolib.packet *)
+  hiolib.packet *
+  hiolib.packet)
 
 (defn enumlize [e enum-class]
-  (try (enum-class e) (except [Exception] e)))
+  (try
+    (enum-class e)
+    (except [Exception]
+      (when hiolib.packet.debug
+        (print (traceback.format-exc)))
+      e)))
 
 (defn int-replace [buf offset ilen i]
   (+ (cut buf offset)

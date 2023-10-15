@@ -7,6 +7,28 @@
   hiolib.stream *
   hiolib.struct *)
 
+(setv debug False)
+
+(defclass IndentPrinter []
+  (defn #-- init [self [indent 0] [step 1] [char "\t"]]
+    (setv self.indent indent
+          self.step   step
+          self.char   char))
+
+  (defn #-- enter [self #* args #** kwargs]
+    (+= self.indent self.step)
+    self)
+
+  (defn #-- exit [self #* args #** kwargs]
+    (-= self.indent self.step)
+    False)
+
+  (defn [property] prefix [self]
+    (* self.indent self.char))
+
+  (defn print [self #* args #** kwargs]
+    (print self.prefix #* args #** kwargs)))
+
 (defclass Packet []
   (setv struct None)
 
@@ -32,31 +54,38 @@
     (bool (get self packet-class)))
 
   (defn #-- str [self]
-    (let [s (. self #-- class #-- name)]
-      (if self.next-packet (+ s "/" (str self.next-packet)) s)))
+    (let [kwargs (.join "," (gfor kw self.struct.names (.format "{}={}" kw (repr (getattr self kw)))))
+          s (.format "{}({})" (. self #-- class #-- name) kwargs)]
+      (when self.next-packet
+        (+= s "/" (str self.next-packet)))
+      s))
 
   (defn #-- repr [self]
     (str self))
 
-  (defn [property] dict [self]
-    (dfor name self.struct.names name (getattr self name)))
+  (defn print-packet [self printer]
+    (for [name self.struct.names]
+      (.print printer (.format "{}: {}" name (repr (getattr self name))))))
 
-  (defn print [self]
-    (print (. self #-- class))
-    (print self.dict)
-    (when (isinstance self.next-packet Packet)
-      (.print self.next-packet)))
+  (defn print [self [printer None]]
+    (unless printer
+      (setv printer (IndentPrinter)))
+    (.print printer (. self #-- class #-- name))
+    (with [_ printer]
+      (.print-packet self printer))
+    (when self.next-packet
+      (.print self.next-packet printer)))
 
   (defn [property] parse-next-class [self])
 
-  (defn [classmethod] parse [cls buf [debug False]]
+  (defn [classmethod] parse [cls buf]
     (let [reader (BIOStream buf)
           packet (cls #** (.unpack-dict-from-stream cls.struct reader))
           buf (.read-all reader)]
       (when buf
         (setv packet.next-packet
               (try
-                (.parse (or packet.parse-next-class Payload) buf debug)
+                (.parse (or packet.parse-next-class Payload) buf)
                 (except [Exception]
                   (when debug
                     (print (traceback.format-exc)))
@@ -70,7 +99,7 @@
   (defn build [self]
     (setv self.pload (if self.next-packet (.build self.next-packet) b""))
     (.pre-build self)
-    (setv self.head (.pack-dict self.struct self.dict))
+    (setv self.head (.pack-dict self.struct (dfor name self.struct.names name (getattr self name))))
     (.post-build self)
     (+ self.head self.pload))
 
