@@ -357,7 +357,7 @@
 
 (defn ipv4-pad-opts [opts]
   (let [mod (% (len opts) 4)]
-    (if (= mod 0) buf (+ buf (bytes (- 4 mod))))))
+    (if (= mod 0) opts (+ opts (bytes (- 4 mod))))))
 
 (defpacket [(EtherType.register EtherType.IPv4)] IPv4
   ;; order is necessary: next class mixin should resolve proto first,
@@ -417,7 +417,7 @@
           (+ opts b"\x00")
           True
           (let [n (- 6 mod)]
-            (+ buf b"\x01" (int-pack n 1) (bytes n))))))
+            (+ opts b"\x01" (int-pack n 1) (bytes n))))))
 
 (define-atom-struct-opt IPv6 PadN
   [all pad
