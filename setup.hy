@@ -10,5 +10,5 @@
   :version version
   :install-requires requires
   :author "vhqr"
-  :description "io library for hy"
+  :description "IO library for hy"
   :packages (#/ setuptools.find-packages))
