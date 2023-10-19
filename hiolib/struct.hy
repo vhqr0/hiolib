@@ -4,6 +4,9 @@
 (import
   hiolib.stream *)
 
+(defn normalize [v cls]
+  (try (cls v) (except [Exception] v)))
+
 (defn bytes-concat [bs]
   (.join b"" bs))
 
@@ -123,19 +126,25 @@
   (defn [property] from-bytes-form [self]
     (cond self.repeat
           `(lfor _ (range ~self.repeat) ~self.from-bytes-1-form)
-          self.repeat-until
-          `(let [them (list)]
+          self.repeat-while
+          `(let [them (list) it None]
+             (while ~self.repeat-while
+               (setv it ~self.from-bytes-1-form)
+               (.append them it))
+             them)
+          self.repeat-do-until
+          `(let [them (list) it None]
              (while True
-               (let [it ~self.from-bytes-1-form]
-                 (.append them it)
-                 (when ~self.repeat-until
-                   (break))))
+               (setv it ~self.from-bytes-1-form)
+               (.append them it)
+               (when ~self.repeat-do-until
+                 (break)))
              them)
           True
           self.from-bytes-1-form))
 
   (defn [property] to-bytes-form [self]
-    (if (or self.repeat self.repeat-until)
+    (if (or self.repeat self.repeat-while self.repeat-do-until)
         `(let [them it]
            (bytes-concat (gfor it them ~self.to-bytes-1-form)))
         self.to-bytes-1-form))
@@ -219,10 +228,17 @@
 
   (defn [property] from-bytes-1-form [self]
     `(let [_len (int-unpack (async-wait (.read-exactly reader ~self.len)))]
+       ~@(when self.len-to
+           `((let [it _len]
+               (setv _len ~self.len-to))))
        (async-wait (.read-exactly reader _len))))
 
   (defn [property] to-bytes-1-form [self]
-    `(+ (int-pack (len it) ~self.len) it)))
+    `(let [_len (len it)]
+       ~@(when self.len-from
+           `((let [it _len]
+               (setv _len ~self.len-from))))
+       (+ (int-pack _len ~self.len) it))))
 
 (defclass LineField [Field]
   (setv field-type 'line)
@@ -275,6 +291,6 @@
     `(.pack ~self.struct #* it)))
 
 (export
-  :objects [bytes-concat int-pack int-unpack bits-pack bits-unpack
+  :objects [normalize bytes-concat int-pack int-unpack bits-pack bits-unpack
             StructValidationError Struct AsyncStruct Field]
   :macros [defstruct])

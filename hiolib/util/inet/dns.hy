@@ -1,7 +1,8 @@
 (require
   hiolib.rule :readers * *
   hiolib.struct *
-  hiolib.packet *)
+  hiolib.packet *
+  hiolib.util.inet.inet *)
 
 (import
   enum [IntEnum]
@@ -19,6 +20,9 @@
         MX     15
         TXT    16
         ANY   255))
+
+;;; compatible with opt dict defined by define-opt-dict
+(setv DNSTypeOpt DNSType)
 
 (defclass DNSRcode [IntEnum]
   (setv NoError     0
@@ -63,16 +67,11 @@
                 True
                 (.append subnames (async-wait (.read-exactly reader nlen)))))))))
 
-(defstruct DNSNames
-  [[struct names
-    :struct (async-name DNSName)
-    :repeat-until (not (async-wait (.peek reader)))
-    :to-each (get it 0)
-    :from-each #(it)]])
+(define-dry-atom-struct DNSNames names (async-name DNSName))
 
 (defstruct DNSQR
   [[struct [name] :struct (async-name DNSName)]
-   [int type :len 2 :to (enumlize it DNSType)]
+   [int type :len 2 :to (normalize it DNSType)]
    [int cls :len 2]])
 
 (defstruct DNSRR
@@ -80,8 +79,8 @@
    [int ttl :len 4]
    [varlen data
     :len 2
-    :from (DNSType.pack-data type it)
-    :to (DNSType.unpack-data type it)]])
+    :from (DNSType.pack type it)
+    :to (DNSType.unpack type it)]])
 
 (defpacket [(UDPService.register UDPService.DNS UDPService.MDNS UDPService.LLMNR)] DNS []
   [[int id :len 2]
@@ -109,13 +108,13 @@
     (when (= self.arcount 0)
       (setv self.arcount (len self.ar)))))
 
-(defclass [(DNSType.register DNSType.CNAME)] DNSTypeCNAME [AtomStructOpt DNSName])
-(defclass [(DNSType.register DNSType.A)]     DNSTypeA     [AtomStructOpt IPv4Addr])
-(defclass [(DNSType.register DNSType.AAAA)]  DNSTypeAAAA  [AtomStructOpt IPv6Addr])
-(defclass [(DNSType.register DNSType.PTR)]   DNSTypePTR   [AtomStructOpt DNSName])
-(defclass [(DNSType.register DNSType.NS)]    DNSTypeNS    [AtomStructOpt DNSName])
+(define-atom-struct-opt DNSType CNAME DNSName)
+(define-atom-struct-opt DNSType A     IPv4Addr)
+(define-atom-struct-opt DNSType AAAA  IPv6Addr)
+(define-atom-struct-opt DNSType PTR   DNSName)
+(define-atom-struct-opt DNSType NS    DNSName)
 
-(defpacket [(DNSType.register DNSType.SOA)] DNSTypeSOA [PacketOpt]
+(define-packet-opt DNSType SOA
   [[struct [[mname] [rname]] :struct (async-name DNSName) :repeat 2]
    [int serial :len 4]
    [int refresh :len 4]
@@ -125,8 +124,6 @@
   [[mname ""] [rname ""]
    [serial 0] [refresh 0] [retry 0] [expire 0] [minimum 0]])
 
-(defstruct DNSTypeMXStruct
+(define-struct-opt DNSType MX
   [[int pref :len 2]
    [struct [name] :struct (async-name DNSName)]])
-
-(defclass [(DNSType.register DNSType.MX)] DNSTypeMX [StructOpt DNSTypeMXStruct])
