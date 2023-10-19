@@ -129,7 +129,10 @@
    DNSSearch   24
    NTPServer   56]
   [[int type :len 2 :to (normalize it DHCPv6Opt)]
-   [varlen data :len 2]])
+   [varlen data
+    :len 2
+    :from (DHCPv6Opt.pack type it)
+    :to (DHCPv6Opt.unpack type it)]])
 
 (defpacket [(UDPService.register UDPService.DHCPv6Cli UDPService.DHCPv6Cli)] DHCPv6 []
   [[int type :len 1 :to (normalize it DHCPv6MsgType)]
@@ -138,7 +141,7 @@
   [[type DHCPv6MsgType.Solicit] [xid 0] [opts #()]])
 
 (define-struct-opt DHCPv6 Status
-  [[int code :len 1]
+  [[int code :len 2]
    [all msg]])
 
 (define-int-opt DHCPv6 Pref 1)
