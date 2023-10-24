@@ -10,20 +10,20 @@
 (defn bytes-concat [bs]
   (.join b"" bs))
 
-(defn int-pack [i ilen]
-  (.to-bytes i ilen "big"))
+(defn int-pack [i ilen [order "big"]]
+  (.to-bytes i ilen order))
 
-(defn int-unpack [b]
-  (int.from-bytes b "big"))
+(defn int-unpack [b [order "big"]]
+  (int.from-bytes b order))
 
-(defn bits-pack [offsets bits ilen]
+(defn bits-pack [offsets bits ilen [order "big"]]
   (-> (cfor sum
             #(offset bit) (zip offsets bits)
             (<< bit offset))
-      (int-pack ilen)))
+      (int-pack ilen order)))
 
-(defn bits-unpack [offsets masks b]
-  (let [i (int-unpack b)]
+(defn bits-unpack [offsets masks b [order "big"]]
+  (let [i (int-unpack b order)]
     (lfor #(offset mask) (zip offsets masks)
           (& (>> i offset) mask))))
 
@@ -218,16 +218,18 @@
   (setv field-type 'int)
 
   (defn [property] from-bytes-1-form [self]
-    `(int-unpack (async-wait (.read-exactly reader ~self.len))))
+    `(int-unpack (async-wait (.read-exactly reader ~self.len))
+                 :order ~(or self.order "big")))
 
   (defn [property] to-bytes-1-form [self]
-    `(int-pack it ~self.len)))
+    `(int-pack it ~self.len :order ~(or self.order "big"))))
 
 (defclass VarLenField [Field]
   (setv field-type 'varlen)
 
   (defn [property] from-bytes-1-form [self]
-    `(let [_len (int-unpack (async-wait (.read-exactly reader ~self.len)))]
+    `(let [_len (int-unpack (async-wait (.read-exactly reader ~self.len))
+                            :order ~(or self.order "big"))]
        ~@(when self.len-to
            `((let [it _len]
                (setv _len ~self.len-to))))
@@ -238,7 +240,7 @@
        ~@(when self.len-from
            `((let [it _len]
                (setv _len ~self.len-from))))
-       (+ (int-pack _len ~self.len) it))))
+       (+ (int-pack _len ~self.len :order ~(or self.order "big")) it))))
 
 (defclass LineField [Field]
   (setv field-type 'line)
@@ -276,10 +278,12 @@
     (lfor len self._lens (- (<< 1 len) 1)))
 
   (defn [property] from-bytes-1-form [self]
-    `(bits-unpack #(~@self.offsets) #(~@self.masks) (async-wait (.read-exactly reader ~self.len))))
+    `(bits-unpack #(~@self.offsets) #(~@self.masks)
+                  (async-wait (.read-exactly reader ~self.len))
+                  :order ~(or self.order "big")))
 
   (defn [property] to-bytes-1-form [self]
-    `(bits-pack #(~@self.offsets) it ~self.len)))
+    `(bits-pack #(~@self.offsets) it ~self.len :order ~(or self.order "big"))))
 
 (defclass StructField [Field]
   (setv field-type 'struct)
