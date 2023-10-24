@@ -30,6 +30,9 @@
 (defmacro async-wait [coro-form]
   `(async-if (await ~coro-form) ~coro-form))
 
+(defmacro async-iter [coro-form]
+  `((async-if aiter iter) ~coro-form))
+
 (defmacro async-next [coro-form]
   `((async-if anext next) ~coro-form))
 
