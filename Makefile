@@ -9,4 +9,6 @@ build: compile
 .PHONY: clean
 clean:
 	rm -rf build dist hiolib.egg-info
-	hy -c "(do (import pathlib [Path]) (for [p (.rglob (Path \"hiolib\") \"*.py\")] (.unlink p)))"
+	hy -c "(do (import pathlib [Path] shutil [rmtree]) \
+(for [p (.rglob (Path \"hiolib\") \"*.py\")] (.unlink p)) \
+(for [p (.rglob (Path \"hiolib\") \"__pycache__\")] (rmtree p)))"
