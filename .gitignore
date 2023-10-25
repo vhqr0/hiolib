@@ -1,6 +1,7 @@
 __pycache__
 *.py
 
+/.venv
 /hiolib.egg-info
 /build
 /dist
