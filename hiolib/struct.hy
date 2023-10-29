@@ -208,19 +208,21 @@
   (setv field-type 'all)
 
   (defn [property] from-bytes-form [self]
-    `(async-wait (.read-all reader)))
+    `(let [it (async-wait (.read-all reader))]
+       ~(if self.struct `(.unpack ~self.struct it) 'it)))
 
   (defn [property] to-bytes-form [self]
-    'it))
+    (if self.struct `(.pack ~self.struct #* it) 'it)))
 
 (defclass BytesField [Field]
   (setv field-type 'bytes)
 
   (defn [property] from-bytes-1-form [self]
-    `(async-wait (.read-exactly reader ~self.len)))
+    `(let [it (async-wait (.read-exactly reader ~self.len))]
+       ~(if self.struct `(.unpack ~self.struct it) 'it)))
 
   (defn [property] to-bytes-1-form [self]
-    'it))
+    (if self.struct `(.pack ~self.struct #* it) 'it)))
 
 (defclass IntField [Field]
   (setv field-type 'int)
@@ -241,14 +243,16 @@
        ~@(when self.len-to
            `((let [it _len]
                (setv _len ~self.len-to))))
-       (async-wait (.read-exactly reader _len))))
+       (let [it (async-wait (.read-exactly reader _len))]
+         ~(if self.struct `(.unpack ~self.struct it) 'it))))
 
   (defn [property] to-bytes-1-form [self]
-    `(let [_len (len it)]
-       ~@(when self.len-from
-           `((let [it _len]
-               (setv _len ~self.len-from))))
-       (+ (int-pack _len ~self.len :order ~(or self.order "big")) it))))
+    `(let [it ~(if self.struct `(.pack ~self.struct #* it) 'it)]
+       (let [_len (len it)]
+         ~@(when self.len-from
+             `((let [it _len]
+                 (setv _len ~self.len-from))))
+         (+ (int-pack _len ~self.len :order ~(or self.order "big")) it)))))
 
 (defclass LineField [Field]
   (setv field-type 'line)
@@ -327,24 +331,7 @@
        :to-each (get it 0)
        ~@args]]))
 
-(defmacro define-varlen-struct [struct-name field-name struct-form len-form #* args]
-  `(defstruct ~struct-name
-     [[varlen ~field-name
-       :len ~len-form
-       :from (.pack ~struct-form #* it)
-       :to (.unpack ~struct-form it)
-       ~@args]]))
-
-(defmacro define-atom-varlen-struct [struct-name field-name struct-form len-form #* args]
-  `(defstruct ~struct-name
-     [[varlen ~field-name
-       :len ~len-form
-       :from (.pack ~struct-form it)
-       :to (get (.unpack ~struct-form it) 0)]]))
-
 (export
   :objects [normalize bytes-concat int-pack int-unpack bits-pack bits-unpack
             StructValidationError Struct AsyncStruct Field]
-  :macros [defstruct define-int-list-struct
-           define-list-struct define-atom-list-struct
-           define-varlen-struct define-atom-varlen-struct])
+  :macros [defstruct define-int-list-struct define-list-struct define-atom-list-struct])
