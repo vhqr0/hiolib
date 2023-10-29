@@ -27,6 +27,8 @@
     (lfor #(offset mask) (zip offsets masks)
           (& (>> i offset) mask))))
 
+
+
 (defclass StructValidationError [Exception])
 
 (async-defclass Struct []
@@ -54,6 +56,8 @@
 
   (async-defn [classmethod] unpack-dict [cls buf]
     (dict (zip cls.names (async-wait (.unpack cls buf))))))
+
+
 
 (defclass Field []
   (setv field-type-dict (dict)
@@ -183,6 +187,8 @@
                (unless ~self.to-validate
                  (raise StructValidationError))))))))
 
+
+
 (defmacro defstruct [name fields]
   (let [fields (lfor field fields (#/ hiolib.struct.Field.from-model field))
         names (#/ functools.reduce #/ operator.add (gfor field fields field.names))
@@ -195,6 +201,8 @@
        (async-defn [staticmethod] unpack-from-stream [reader]
          ~@(gfor field fields field.unpack-setv-form)
          #(~@names)))))
+
+
 
 (defclass AllField [Field]
   (setv field-type 'all)
@@ -294,7 +302,49 @@
   (defn [property] to-bytes-1-form [self]
     `(.pack ~self.struct #* it)))
 
+
+
+(defmacro define-int-list-struct [struct-name field-name len-form #* args]
+  `(defstruct ~struct-name
+     [[int ~field-name
+       :len ~len-form
+       :repeat-while (async-wait (.peek reader))
+       ~@args]]))
+
+(defmacro define-list-struct [struct-name field-name struct-form #* args]
+  `(defstruct ~struct-name
+     [[struct ~field-name
+       :struct ~struct-form
+       :repeat-while (async-wait (.peek reader))
+       ~@args]]))
+
+(defmacro define-atom-list-struct [struct-name field-name struct-form #* args]
+  `(defstruct ~struct-name
+     [[struct ~field-name
+       :struct ~struct-form
+       :repeat-while (async-wait (.peek reader))
+       :from-each #(it)
+       :to-each (get it 0)
+       ~@args]]))
+
+(defmacro define-varlen-struct [struct-name field-name struct-form len-form #* args]
+  `(defstruct ~struct-name
+     [[varlen ~field-name
+       :len ~len-form
+       :from (.pack ~struct-form #* it)
+       :to (.unpack ~struct-form it)
+       ~@args]]))
+
+(defmacro define-atom-varlen-struct [struct-name field-name struct-form len-form #* args]
+  `(defstruct ~struct-name
+     [[varlen ~field-name
+       :len ~len-form
+       :from (.pack ~struct-form it)
+       :to (get (.unpack ~struct-form it) 0)]]))
+
 (export
   :objects [normalize bytes-concat int-pack int-unpack bits-pack bits-unpack
             StructValidationError Struct AsyncStruct Field]
-  :macros [defstruct])
+  :macros [defstruct define-int-list-struct
+           define-list-struct define-atom-list-struct
+           define-varlen-struct define-atom-varlen-struct])
