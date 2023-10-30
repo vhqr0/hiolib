@@ -7,9 +7,6 @@
 (defn normalize [v cls]
   (try (cls v) (except [Exception] v)))
 
-(defn bytes-concat [bs]
-  (.join b"" bs))
-
 (defn int-pack [i ilen [order "big"]]
   (.to-bytes i ilen order))
 
@@ -32,30 +29,38 @@
 (defclass StructValidationError [Exception])
 
 (async-defclass Struct []
-  (setv names None)
+  (setv names None
+        sync-struct None)
 
-  (defn [staticmethod] pack [#* args]
+  (defn [classmethod] zip [cls #* args]
+    (zip cls.names args))
+
+  (async-defn [classmethod] pack-to-stream [cls writer #* args #** kwargs]
     (raise NotImplementedError))
 
-  (async-defn [staticmethod] unpack-from-stream [reader]
+  (async-defn [classmethod] unpack-from-stream [cls reader]
     (raise NotImplementedError))
 
-  (async-defn [classmethod] pack-dict [cls d]
-    (.pack cls #* (gfor name cls.names (get d name))))
+  (async-defn [classmethod] pack-to-bytes [cls #* args #** kwargs]
+    (let [writer ((async-name BIOStream))]
+      (async-wait (.pack-to-stream cls writer #* args #** kwargs))
+      (.getvalue writer)))
 
-  (async-defn [classmethod] unpack-dict-from-stream [cls reader]
-    (dict (zip cls.names (async-wait (.unpack-from-stream cls reader)))))
-
-  (async-defn [classmethod] unpack [cls buf]
+  (async-defn [classmethod] unpack-from-bytes [cls buf]
     (let [reader ((async-name BIOStream) buf)
-          st (async-wait (cls.unpack-from-stream reader))]
-      (let [buf (async-wait (.peek reader))]
-        (when (async-wait (.peek reader))
-          (raise (IncompleteReadError 0 (len buf)))))
-      st))
+          struct (async-wait (.unpack-from-stream cls reader))]
+      (when (async-wait (.peek reader))
+        (raise (IncompleteReadError 0 (len buf))))
+      struct))
 
-  (async-defn [classmethod] unpack-dict [cls buf]
-    (dict (zip cls.names (async-wait (.unpack cls buf))))))
+  (defn [classmethod] pack [cls #* args #** kwargs]
+    (.pack-to-bytes cls.sync-struct #* args #** kwargs))
+
+  (defn [classmethod] unpack [cls buf]
+    (.unpack-from-bytes cls.sync-struct buf))
+
+  (async-defn [classmethod] pack-bytes-to-stream [cls writer #* args #** kwargs]
+    (async-wait (.write writer (.pack cls #* args #** kwargs)))))
 
 
 
@@ -96,9 +101,6 @@
              hy.models.List (hy.models.Symbol
                               (+ "group-" (.join "-" (map str self.names))))))
 
-  (defn [#/ functools.cached-property] name-bytes [self]
-    (hy.models.Symbol (+ (str self.name) "-bytes")))
-
   (defn [#/ functools.cached-property] group-struct [self]
     (when (isinstance self._name hy.models.List)
       (defn model-l2t [l]
@@ -107,11 +109,11 @@
 
   (defn [property] from-field-form [self]
     (cond self.from
-          `(let [it ~self.name] ~self.from)
+          self.from
           self.from-each
-          `(lfor it ~self.name ~self.from-each)
+          `(let [them it] (lfor it them ~self.from-each))
           True
-          self.name))
+          'it))
 
   (defn [property] to-field-form [self]
     (cond self.to
@@ -150,15 +152,15 @@
   (defn [property] to-bytes-form [self]
     (if (or self.repeat self.repeat-while self.repeat-do-until)
         `(let [them it]
-           (bytes-concat (gfor it them ~self.to-bytes-1-form)))
+           (for [it them]
+             ~self.to-bytes-1-form))
         self.to-bytes-1-form))
 
   (defn [property] pack-setv-form [self]
     "
-(setv a-bytes (let [it FROM-FIELD-FORM] TO-BYTES-FORM))
+(let [it (let [it a] FROM-FIELD-FORM)] TO-BYTES-FORM)
 (setv group-b-c #(b c))
-(setv group-b-c-bytes (let [it FROM-FIELD-FORM] TO-BYTES-FORM))
-(bytes-concat #(a-bytes group-b-c-bytes ...))
+(let [it (let [it group-b-c] FROM-FIELD-FORM)] TO-BYTES-FORM)
 "
     `(do
        ~@(when self.group-struct
@@ -167,8 +169,8 @@
            `((let [it ~self.name]
                (unless ~self.from-validate
                  (raise StructValidationError)))))
-       (setv ~self.name-bytes (let [it ~self.from-field-form]
-                                ~self.to-bytes-form))))
+       (let [it (let [it ~self.name] ~self.from-field-form)]
+         ~self.to-bytes-form)))
 
   (defn [property] unpack-setv-form [self]
     "
@@ -191,16 +193,17 @@
 
 (defmacro defstruct [name fields]
   (let [fields (lfor field fields (#/ hiolib.struct.Field.from-model field))
-        names (#/ functools.reduce #/ operator.add (gfor field fields field.names))
-        names-bytes (lfor field fields field.name-bytes)]
-    `(async-defclass ~name [(async-name Struct)]
-       (setv names #(~@(gfor name names (hy.mangle (str name)))))
-       (defn [staticmethod] pack [~@names]
-         ~@(gfor field fields field.pack-setv-form)
-         (bytes-concat #(~@names-bytes)))
-       (async-defn [staticmethod] unpack-from-stream [reader]
-         ~@(gfor field fields field.unpack-setv-form)
-         #(~@names)))))
+        names (#/ functools.reduce #/ operator.add (gfor field fields field.names))]
+    `(do
+       (async-defclass ~name [(async-name Struct)]
+         (setv names #(~@(gfor name names (hy.mangle (str name)))))
+         (async-defn [classmethod] pack-to-stream [cls writer ~@names]
+           ~@(gfor field fields field.pack-setv-form))
+         (async-defn [classmethod] unpack-from-stream [cls reader]
+           ~@(gfor field fields field.unpack-setv-form)
+           #(~@names)))
+       (setv (. ~name                                 sync-struct) ~name
+             (. ~(#/ hiolib.rule.get-async-name name) sync-struct) ~name))))
 
 
 
@@ -212,7 +215,7 @@
        ~(if self.struct `(.unpack ~self.struct it) 'it)))
 
   (defn [property] to-bytes-form [self]
-    (if self.struct `(.pack ~self.struct #* it) 'it)))
+    `(async-wait (.write writer ~(if self.struct `(.pack ~self.struct #* it) 'it)))))
 
 (defclass BytesField [Field]
   (setv field-type 'bytes)
@@ -222,7 +225,7 @@
        ~(if self.struct `(.unpack ~self.struct it) 'it)))
 
   (defn [property] to-bytes-1-form [self]
-    (if self.struct `(.pack ~self.struct #* it) 'it)))
+    `(async-wait (.write writer ~(if self.struct `(.pack ~self.struct #* it) 'it)))))
 
 (defclass IntField [Field]
   (setv field-type 'int)
@@ -232,27 +235,25 @@
                  :order ~(or self.order "big")))
 
   (defn [property] to-bytes-1-form [self]
-    `(int-pack it ~self.len :order ~(or self.order "big"))))
+    `(async-wait (.write writer (int-pack it ~self.len :order ~(or self.order "big"))))))
 
 (defclass VarLenField [Field]
   (setv field-type 'varlen)
 
   (defn [property] from-bytes-1-form [self]
-    `(let [_len (int-unpack (async-wait (.read-exactly reader ~self.len))
-                            :order ~(or self.order "big"))]
+    `(let [it (int-unpack (async-wait (.read-exactly reader ~self.len)) :order ~(or self.order "big"))]
        ~@(when self.len-to
-           `((let [it _len]
-               (setv _len ~self.len-to))))
-       (let [it (async-wait (.read-exactly reader _len))]
+           `((setv it ~self.len-to)))
+       (let [it (async-wait (.read-exactly reader it))]
          ~(if self.struct `(.unpack ~self.struct it) 'it))))
 
   (defn [property] to-bytes-1-form [self]
     `(let [it ~(if self.struct `(.pack ~self.struct #* it) 'it)]
-       (let [_len (len it)]
+       (let [it (len it)]
          ~@(when self.len-from
-             `((let [it _len]
-                 (setv _len ~self.len-from))))
-         (+ (int-pack _len ~self.len :order ~(or self.order "big")) it)))))
+             `((setv it ~self.len-from)))
+         (async-wait (.write writer (int-pack it ~self.len :order ~(or self.order "big")))))
+       (async-wait (.write writer it)))))
 
 (defclass LineField [Field]
   (setv field-type 'line)
@@ -261,41 +262,41 @@
     `(.decode (async-wait (.read-line reader :sep ~self.sep))))
 
   (defn [property] to-bytes-1-form [self]
-    `(+ (.encode it) ~self.sep)))
+    `(async-wait (.write writer (+ (.encode it) ~self.sep)))))
 
 (defclass BitsField [Field]
   (setv field-type 'bits)
 
-  (defn [property] _lens [self]
-    (map int self.lens))
+  (defn [#/ functools.cached-property] int-lens [self]
+    (list (map int self.lens)))
 
-  (defn [property] sum [self]
-    (sum self._lens))
+  (defn [#/ functools.cached-property] nbits [self]
+    (sum self.int-lens))
 
-  (defn [property] len [self]
-    (let [#(d m) (divmod self.sum 8)]
+  (defn [#/ functools.cached-property] nbytes [self]
+    (let [#(d m) (divmod self.nbits 8)]
       (unless (= m 0)
         (raise ValueError))
       d))
 
-  (defn [property] offsets [self]
-    (let [sum self.sum
+  (defn [#/ functools.cached-property] offsets [self]
+    (let [nbits self.nbits
           offsets (list)]
-      (for [len self._lens]
-        (-= sum len)
-        (.append offsets sum))
+      (for [len self.int-lens]
+        (-= nbits len)
+        (.append offsets nbits))
       offsets))
 
-  (defn [property] masks [self]
-    (lfor len self._lens (- (<< 1 len) 1)))
+  (defn [#/ functools.cached-property] masks [self]
+    (lfor len self.int-lens (- (<< 1 len) 1)))
 
   (defn [property] from-bytes-1-form [self]
     `(bits-unpack #(~@self.offsets) #(~@self.masks)
-                  (async-wait (.read-exactly reader ~self.len))
+                  (async-wait (.read-exactly reader ~self.nbytes))
                   :order ~(or self.order "big")))
 
   (defn [property] to-bytes-1-form [self]
-    `(bits-pack #(~@self.offsets) it ~self.len :order ~(or self.order "big"))))
+    `(async-wait (.write writer (bits-pack #(~@self.offsets) it ~self.nbytes :order ~(or self.order "big"))))))
 
 (defclass StructField [Field]
   (setv field-type 'struct)
@@ -304,7 +305,7 @@
     `(async-wait (.unpack-from-stream ~self.struct reader)))
 
   (defn [property] to-bytes-1-form [self]
-    `(.pack ~self.struct #* it)))
+    `(async-wait (.pack-to-stream ~self.struct writer #* it))))
 
 
 
@@ -332,6 +333,6 @@
        ~@args]]))
 
 (export
-  :objects [normalize bytes-concat int-pack int-unpack bits-pack bits-unpack
+  :objects [normalize int-pack int-unpack bits-pack bits-unpack
             StructValidationError Struct AsyncStruct Field]
   :macros [defstruct define-int-list-struct define-list-struct define-atom-list-struct])

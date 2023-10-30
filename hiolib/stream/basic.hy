@@ -26,7 +26,7 @@
     (.write self.io buf)))
 
 (async-defclass BIOStream [(async-name RawIOStream)]
-  (defn #-- init [self bio #** kwargs]
+  (defn #-- init [self [bio b""] #** kwargs]
     (#super-- init :io (io.BytesIO bio) #** kwargs))
 
   (defn getvalue [self]
