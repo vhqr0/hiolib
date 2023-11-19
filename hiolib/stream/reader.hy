@@ -1,16 +1,11 @@
 (require
   hiolib.rule :readers * *)
 
-(import io [BytesIO])
-
 (defclass StreamError [Exception])
 
 (defclass StreamEOFError [StreamError])
 
 (defclass StreamOverflowError [StreamError])
-
-(defn bytes-split-at [b n]
-  #((cut b n) (cut b n None)))
 
 (async-defclass StreamReader []
   (setv read-buf-size (do-mac (<< 1 16)))
@@ -22,49 +17,75 @@
   (async-defn read1 []
     (raise NotImplementedError))
 
+  (async-defn read [self]
+    (let [buf (async-wait (.peek self))]
+      (setv self.read-buf b"")
+      buf))
+
+  (async-defn next [self]
+    (let [buf (async-wait (.read self))]
+      (unless buf
+        (raise StopIteration))
+      buf))
+
+  (async-if
+    (defn #-- aiter [self #* args #** kwargs] self)
+    (defn #-- iter  [self #* args #** kwargs] self))
+
+  (async-if
+    (async-defn #-- anext [self #* args #** kwargs] (async-wait (.next self)))
+    (async-defn #-- next  [self #* args #** kwargs] (async-wait (.next self))))
+
   (async-defn peek [self]
+    ;; peek non-empty bytes unless eof
     (unless (or self.read-eof self.read-buf)
       (setv self.read-buf (async-wait (.read1 self)))
       (unless self.read-buf
         (setv self.read-eof True)))
     self.read-buf)
 
-  (async-defn peek-until [self predicate]
-    (while (not (predicate self.read-buf))
-      (let [buf (async-wait (.read1 self))]
-        (unless buf
-          (setv self.read-eof True)
-          (raise StreamEOFError))
-        (+= self.read-buf buf)
-        (when (> (len self.read-buf) self.read-buf-size)
-          (raise StreamOverflowError))))
+  (async-defn peek-more [self]
+    ;; strictly extend buf and then peek
+    (when self.read-eof
+      (raise StreamEOFError))
+    (let [buf (async-wait (.read1 self))]
+      (unless buf
+        (setv self.read-eof True)
+        (raise StreamEOFError))
+      (+= self.read-buf buf))
+    (when (> (len self.read-buf) self.read-buf-size)
+      (raise StreamOverflowError))
     self.read-buf)
 
-  (async-defn read [self]
+  (async-defn peek-until [self pred]
+    ;; peek bytes satisfied pred
     (let [buf (async-wait (.peek self))]
-      (setv self.read-buf b"")
+      (while (not (pred buf))
+        (setv buf (async-wait (.peek-more self))))
       buf))
 
+  (async-defn peek-atleast [self n]
+    ;; peek atleast n bytes
+    (async-wait (.peek-until self (fn [buf] (>= (len buf) n)))))
+
+  (async-defn peek-sep [self [sep b"\r\n"]]
+    ;; peek bytes contained atleast 1 sep
+    (async-wait (.peek-until self (fn [buf] (>= (.find buf sep) 0)))))
+
   (async-defn read-exactly [self n]
-    (async-wait (.peek-until self (fn [buf] (>= (len buf) n))))
-    (let [#(buf1 buf2) (bytes-split-at self.read-buf n)]
+    (let [buf (async-wait (.peek-atleast self n))
+          #(buf1 buf2) #((cut buf n) (cut buf n None))]
       (setv self.read-buf buf2)
       buf1))
 
   (async-defn read-line [self [sep b"\r\n"]]
-    (async-wait (.peek-until self (fn [buf] (>= (.find buf sep) 0))))
-    (let [#(buf1 buf2) (.split self.read-buf sep 1)]
+    (let [buf (async-wait (.peek-sep self sep))
+          #(buf1 buf2) (.split buf sep 1)]
       (setv self.read-buf buf2)
       buf1))
 
   (async-defn read-all [self]
-    (let [bufs (list)]
-      (while True
-        (let [buf (async-wait (.read self))]
-          (unless buf
-            (break))
-          (.append bufs buf)))
-      (.join b"" bufs))))
+    (.join b"" self)))
 
 (export
   :objects [StreamError StreamEOFError StreamOverflowError StreamReader AsyncStreamReader])

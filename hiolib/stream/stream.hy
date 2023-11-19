@@ -51,17 +51,13 @@
 
   (defn get-lowest-head [self head]
     (let [next-head (.get-next-head self head)]
-      (if self.next-layer
-          (.get-lowest-head self.next-layer next-head)
-          next-head)))
+      (if self.next-layer (.get-lowest-head self.next-layer next-head) next-head)))
 
   (async-defn connect1 [self next-stream]
     next-stream)
 
   (async-defn connect [self lowest-stream]
-    (let [next-stream (if self.next-layer
-                          (async-wait (.connect self.next-layer lowest-stream))
-                          lowest-stream)]
+    (let [next-stream (if self.next-layer (async-wait (.connect self.next-layer lowest-stream)) lowest-stream)]
       (async-wait (.connect1 self next-stream))))
 
   (async-defn connect-with-head [self lowest-stream [head b""]]
@@ -74,9 +70,7 @@
     next-stream)
 
   (async-defn accept [self lowest-stream]
-    (let [next-stream (if self.next-layer
-                          (async-wait (.accept self.next-layer lowest-stream))
-                          lowest-stream)]
+    (let [next-stream (if self.next-layer (async-wait (.accept self.next-layer lowest-stream)) lowest-stream)]
       (async-wait (.accept1 self next-stream)))))
 
 (export

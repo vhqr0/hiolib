@@ -19,7 +19,14 @@
 (setv async? True)
 
 (defn get-async-name [name]
-  (hy.models.Symbol (+ "Async" (str name))))
+  ;; 'FooBar   => 'AsyncFooBar
+  ;; 'foo-bar  => 'async-foo-bar
+  ;; '_FooBar  => '_AsyncFooBar
+  ;; '_foo-bar => '_async-foo-bar
+  (let [name (str name)
+        isprivate (.startswith name "_")
+        islower (.islower name)]
+    (hy.models.Symbol (+ (if isprivate "_" "") (if islower "async-" "Async") (.lstrip name "_")))))
 
 (defmacro async-if [async-form sync-form]
   (if #/ hiolib.rule.async? async-form sync-form))
@@ -57,3 +64,13 @@
        (defclass ~decorators ~name ~@body)
        (eval-when-compile (setv #/ hiolib.rule.async? True))
        (defclass ~decorators ~(#/ hiolib.rule.get-async-name name) ~@body))))
+
+(defmacro async-deffunc [#* body]
+  (let [body (#/ collections.deque body)
+        decorators (if (isinstance (get body 0) hy.models.List) (.popleft body) '[])
+        name (.popleft body)]
+    `(do
+       (eval-when-compile (setv #/ hiolib.rule.async? False))
+       (defn ~decorators ~name ~@body)
+       (eval-when-compile (setv #/ hiolib.rule.async? True))
+       (defn/a ~decorators ~(#/ hiolib.rule.get-async-name name) ~@body))))
