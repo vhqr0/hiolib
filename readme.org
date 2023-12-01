@@ -15,15 +15,15 @@ including three modules:
 
 ** hiolib.rule
 
-Examples:
+Example:
 
 #+begin_src hy
   (async-deffunc foo-bar-func []
     (async-if 'async 'async))
 
   ;;; expand to =>
-  (defn foo-bar-func       [] 'sync)
-  (defn async-foo-bar-func [] 'async)
+  (defn   foo-bar-func       [] 'sync)
+  (defn/a async-foo-bar-func [] 'async)
 #+end_src
 
 #+begin_src hy
@@ -36,19 +36,71 @@ Examples:
       (async-wait (#super meth))))
 
   ;;; expand to =>
-  (defclass FooBarBase      []                (defn meth [self] (foo-bar-func)))
-  (defclass AsyncFooBarBase []                (defn meth [self] (await (async-foo-bar-func))))
-  (defclass FooBar          [FooBarBase]      (defn meth [self] ((. (super) meth))))
-  (defclass AsyncFooBar     [AsyncFooBarBase] (defn meth [self] (await ((. (super) meth)))))
+  (defclass FooBarBase      []                (defn   meth [self] (foo-bar-func)))
+  (defclass AsyncFooBarBase []                (defn/a meth [self] (await (async-foo-bar-func))))
+  (defclass FooBar          [FooBarBase]      (defn   meth [self] ((. (super) meth))))
+  (defclass AsyncFooBar     [AsyncFooBarBase] (defn/a meth [self] (await ((. (super) meth)))))
 #+end_src
 
 Note that macros =async-deffunc= and =async-defclass= expand their
-bodies twice in sync/async env; Macro =(async-if ASYNC-FORM
-SYNC-FORM)= expands to form based on env, eg. =(async-if asyncio.sleep
-time.sleep)= expands to =asyncio.sleep= in async env and =time.sleep=
-in sync env; =(async-name NAME)= and =async-deffunc/async-defclass=
-expand name based on env, such as =(foo-bar, async-foo-bar)= and
-=(FooBar, AsyncFooBar)=. =(async-name NAME)= is just a wrapper of
-=(async-if ASYNC-NAME NAME)=; Some function/special forms are also
-wrapped, such as =async-defn= to =(defn/a, defn)=, =async-wait= to
-=(await, )=, =(async-next)= to =(anext, next)=.
+bodies twice in sync/async env; Macro =async-if= expands to form based
+on env, eg. (=async-if= =asyncio.sleep= =time.sleep=) expands to
+=asyncio.sleep= in async env and =time.sleep= in sync env;
+=async-name= and =async-deffunc/async-defclass= expand name based on
+env, such as =foo-bar/async-foo-bar= and
+=FooBar/AsyncFooBar=. (=async-name= =NAME=) is just a wrapper of
+(=async-if= =ASYNC-NAME= =NAME=); Some function/special forms are also
+wrapped, such as =async-defn= to =defn(/a)?=, =async-wait= to
+=(await)?=, =async-next= to =a?next=.
+
+** hiolib.stream
+
+=Async?Stream= similar to Golang's =ReadWriteCloser=, which can be
+read, write and closed.
+
+Example:
+
+#+begin_src hy
+  (async-defclass Requester []
+    (defn #-- init [self host [port 80]]
+      (setv self.host host self.port port))
+
+    (defn request [self]
+      (with [stream (async-wait (.open-connection (async-name TCPStream) self.host self.port))]
+        (async-wait (.write stream (.encode f"GET / HTTP/1.1\r\nHost: {self.host}\r\n\r\n")))
+        (async-wait (.read stream)))))
+#+end_src
+
+Note that class method =Async?TCPStream.open-connection= can create a
+basic tcp stream, other ways to create basic streams are also
+provided: =Async?TLSStream.open-connection=, =RawIOStream=, and
+=BIOStream= which is a wrapper of =RawIOStream= and =BytesIO=.
+
+=Async?Stream= is layered, and layered stream can be created by
+=Async?Connector/Acceptor= that are also
+layered. [[https:github.com/vhqr0/hproxy][hproxy]] provides some
+stream protocol implementations, such as websocket, tls13, and vmess.
+
+Example:
+
+#+begin_src hy
+  (async-defn request [self]
+    (with [lowest-stream (async-wait (.open-connection TLSStream self.node-host self.node-port self.tls-ctx self.tls-host))]
+      (let [connector ((async-name TLS13Stream)
+                        :host self.host
+                        :next-layer ((async-name VMessConnector)
+                                      :id self.id
+                                      :host self.host
+                                      :port self.port
+                                      :next-layer ((async-name WSConnector))))
+            stream (async-wait (.connect-with-head connector
+                                 :lowest-stream lowest-stream
+                                 :head (.encode f"GET / HTTP/1.1\r\nHost: {self.host}\r\n\r\n")))])
+      (async-wait (.read stream))))
+#+end_src
+
+In the example, an https-over-vmess-over-wss =stream= was created,
+with a layer of =TLS13Stream/VMessStream/WSStream/TLSStream=, where
+=TLSStream= is the system TLS stream, and =TLS13Stream= is the pure
+Python TLS stream; =connector= is also layered, with a layer of
+=TLS13Connector/VMessConnector/WSConnector=.
