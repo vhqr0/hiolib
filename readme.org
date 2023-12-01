@@ -66,7 +66,7 @@ Example:
       (setv self.host host self.port port))
 
     (defn request [self]
-      (with [stream (async-wait (.open-connection (async-name TCPStream) self.host self.port))]
+      (async-with [stream (async-wait (.open-connection (async-name TCPStream) self.host self.port))]
         (async-wait (.write stream (.encode f"GET / HTTP/1.1\r\nHost: {self.host}\r\n\r\n")))
         (async-wait (.read stream)))))
 #+end_src
@@ -85,7 +85,7 @@ Example:
 
 #+begin_src hy
   (async-defn request [self]
-    (with [lowest-stream (async-wait (.open-connection TLSStream self.node-host self.node-port self.tls-ctx self.tls-host))]
+    (async-with [lowest-stream (async-wait (.open-connection TLSStream self.node-host self.node-port self.tls-ctx self.tls-host))]
       (let [connector ((async-name TLS13Stream)
                         :host self.host
                         :next-layer ((async-name VMessConnector)
