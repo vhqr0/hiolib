@@ -1,0 +1,54 @@
+* hiolib - IO Library for Hy
+
+** Overview
+
+This library provides tools for writing sync/async IO functionality,
+including three modules:
+
+- hiolib.rule :: macros that help write both sync/async code
+  simultaneously
+- hiolib.stream :: layered sync/async stream abstraction and basic
+  stream implementation including bytes, file and network
+- hiolib.struct :: macros that define structures (sync/async
+  pack/unpack functions) declaratively in DSL
+
+
+** hiolib.rule
+
+Examples:
+
+#+begin_src hy
+  (async-deffunc foo-bar-func []
+    (async-if 'async 'async))
+
+  ;;; expand to =>
+  (defn foo-bar-func       [] 'sync)
+  (defn async-foo-bar-func [] 'async)
+#+end_src
+
+#+begin_src hy
+  (async-defclass FooBarBase []
+    (async-defn meth [self]
+      (async-wait ((async-name foo-bar-func)))))
+
+  (async-defclass FooBar [(async-name FooBar)]
+    (async-defn meth [self]
+      (async-wait (#super meth))))
+
+  ;;; expand to =>
+  (defclass FooBarBase      []                (defn meth [self] (foo-bar-func)))
+  (defclass AsyncFooBarBase []                (defn meth [self] (await (async-foo-bar-func))))
+  (defclass FooBar          [FooBarBase]      (defn meth [self] ((. (super) meth))))
+  (defclass AsyncFooBar     [AsyncFooBarBase] (defn meth [self] (await ((. (super) meth)))))
+#+end_src
+
+Note that macros =async-deffunc= and =async-defclass= expand their
+bodies twice in sync/async env; Macro =(async-if ASYNC-FORM
+SYNC-FORM)= expands to form based on env, eg. =(async-if asyncio.sleep
+time.sleep)= expands to =asyncio.sleep= in async env and =time.sleep=
+in sync env; =(async-name NAME)= and =async-deffunc/async-defclass=
+expand name based on env, such as =(foo-bar, async-foo-bar)= and
+=(FooBar, AsyncFooBar)=. =(async-name NAME)= is just a wrapper of
+=(async-if ASYNC-NAME NAME)=; Some function/special forms are also
+wrapped, such as =async-defn= to =(defn/a, defn)=, =async-wait= to
+=(await, )=, =(async-next)= to =(anext, next)=.

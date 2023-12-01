@@ -25,7 +25,7 @@
   (async-defn next [self]
     (let [buf (async-wait (.read self))]
       (unless buf
-        (raise StopIteration))
+        (raise (async-if StopAsyncIteration StopIteration)))
       buf))
 
   (async-if
@@ -68,9 +68,23 @@
     ;; peek atleast n bytes
     (async-wait (.peek-until self (fn [buf] (>= (len buf) n)))))
 
-  (async-defn peek-sep [self [sep b"\r\n"]]
-    ;; peek bytes contained atleast 1 sep
-    (async-wait (.peek-until self (fn [buf] (>= (.find buf sep) 0)))))
+  (async-defn peek-line [self [sep b"\r\n"]]
+    ;; peek next line strip sep and rest bytes
+    (let [sp (.split (async-wait (.peek self)) sep 1)]
+      (while (<= (len sp) 1)
+        (setv sp (.split (async-wait (.peek-more self)) sep 1)))
+      sp))
+
+  (async-defn read-atmost [self n]
+    (let [buf (async-wait (.peek self))
+          #(buf1 buf2) (if (> (len buf) n) #((cut buf n) (cut buf n None)) #(buf b""))]
+      (setv self.read-buf buf2)
+      buf1))
+
+  (async-defn read-atleast [self n]
+    (let [buf (async-wait (.peek-atleast self n))]
+      (setv self.read-buf b"")
+      buf))
 
   (async-defn read-exactly [self n]
     (let [buf (async-wait (.peek-atleast self n))
@@ -79,13 +93,14 @@
       buf1))
 
   (async-defn read-line [self [sep b"\r\n"]]
-    (let [buf (async-wait (.peek-sep self sep))
-          #(buf1 buf2) (.split buf sep 1)]
+    (let [#(buf1 buf2) (async-wait (.peek-line self sep))]
       (setv self.read-buf buf2)
       buf1))
 
   (async-defn read-all [self]
-    (.join b"" self)))
+    (let [bufs (list)]
+      (async-for [buf self] (.append bufs buf))
+      (.join b"" bufs))))
 
 (export
   :objects [StreamError StreamEOFError StreamOverflowError StreamReader AsyncStreamReader])

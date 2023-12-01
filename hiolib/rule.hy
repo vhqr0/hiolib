@@ -44,7 +44,7 @@
   `((async-if anext next) ~coro-form))
 
 (defmacro async-for [bracket #* body]
-  `(for (async-if [:async ~@bracket] [~@bracket]) ~@body))
+  `(async-if (for [:async ~@bracket] ~@body) (for [~@bracket] ~@body)))
 
 (defmacro async-with [#* body]
   `(async-if (with/a ~@body) (with ~@body)))

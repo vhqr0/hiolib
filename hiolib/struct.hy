@@ -50,7 +50,7 @@
     (let [reader ((async-name BIOStream) buf)
           struct (async-wait (.unpack-from-stream cls reader))]
       (when (async-wait (.peek reader))
-        (raise (IncompleteReadError 0 (len buf))))
+        (raise StructValidationError))
       struct))
 
   (defn [classmethod] pack [cls #* args #** kwargs]

@@ -123,7 +123,7 @@
 
 (defclass AsyncTLSStream [AsyncioStream]
   (defn/a [classmethod] open-connection [cls host port tls-ctx tls-host]
-    (let [#(reader writer) (await (asyncio.open-connection host port :ssl tls-ctx :server-hostname tls-host :ssl-handshake-timeout 2.0 :ssl-shutdown-timeout 0.0))]
+    (let [#(reader writer) (await (asyncio.open-connection host port :ssl tls-ctx :server-hostname tls-host :ssl-handshake-timeout 2.0))]
       (cls :reader reader :writer writer)))
 
   (defn/a [classmethod] start-server [cls callback host port tls-ctx]

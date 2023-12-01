@@ -1,14 +1,18 @@
 .PHONY: compile
 compile:
-	hy2py -o hiolib hiolib
+	hy2py -o build/hy2py hiolib
 
 .PHONY: build
-build: compile
-	hy setup.hy -v bdist_wheel
+build:
+	poetry build
+
+.PHONY: test
+test:
+	python -m unittest tests -v
 
 .PHONY: clean
 clean:
-	rm -rf build dist hiolib.egg-info
+	rm -rf build dist
 	hy -c "(do (import pathlib [Path] shutil [rmtree]) \
-(for [p (.rglob (Path \"hiolib\") \"*.py\")] (.unlink p)) \
-(for [p (.rglob (Path \"hiolib\") \"__pycache__\")] (rmtree p)))"
+(for [p (.rglob (Path \"hiolib\") \"__pycache__\")] (rmtree p)) \
+(for [p (.rglob (Path \"tests\") \"__pycache__\")] (rmtree p)))"

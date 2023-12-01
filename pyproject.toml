@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "hiolib"
+version = "0.1.0"
+description = "IO Library for Hy"
+authors = ["vhqr0 <zq_cmd@163.com>"]
+readme = "readme.org"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+hy = "^0.27.0"
+hyrule = "^0.4.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
