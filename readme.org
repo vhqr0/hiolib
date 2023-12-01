@@ -104,3 +104,41 @@ with a layer of =TLS13Stream/VMessStream/WSStream/TLSStream=, where
 =TLSStream= is the system TLS stream, and =TLS13Stream= is the pure
 Python TLS stream; =connector= is also layered, with a layer of
 =TLS13Connector/VMessConnector/WSConnector=.
+
+** hiolib.struct
+
+Example:
+
+#+begin_src hy
+  (defstruct IPv6Addr
+    [[bytes addr
+      :len 16
+      :from (socket.inet-pton socket.AF-INET6 it)
+      :to (socket.inet-ntop socket.AF-INET6 it)]])
+
+  (defstruct IPv6
+    [[bits [ver tc fl] :lens [4 8 20]]
+     [int plen :len 2]
+     [int nh :len 1]
+     [int hlim :len 1]
+     [struct [[src] [dst]] :struct (async-name IPv6Addr) :repeat 2]])
+
+  (IPv6.pack :ver 6 :tc 0 :fl 0 :plen 80 :nh 13 :hlim 64 :src "2000::1" :dst "240c::6666")
+  ;;; => b"`\x00\x00\x00\x00P\r@ \x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01$\x0c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00ff"
+
+  (IPv6.unpack b"`\x00\x00\x00\x00P\r@ \x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01$\x0c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00ff")
+  ;;; => (6, 0, 0, 80, 13, 64, '2000::1', '240c::6666')
+#+end_src
+
+Macro =defstruct= expands the DSL describing structure into
+corresponding pack/unpack functions. More precisely, defining
+subclasses of =Async?Struct= and implementing class methods
+=pack-to-stream/unpack-from-stream=.
+
+In DSL, the 1st param is type, within =all=, =bytes=, =int=, =varlen=,
+=line=, =bits= and =struct=; the 2nd param is destruct names,
+eg. =ver:4=, =tc:0=, =fl:0= are grouped as
+=group-ver-tc-fl:(ver,tc,fl):(4,0,0)= during packing, and as
+=(ver,tc,fl):group-ver-tc-fl:(4,0,0)= during unpacking; the rest k-v
+params are processed by corresponding types, usually a form embedded
+in the generated code.
