@@ -33,3 +33,6 @@
     (.assertEqual self (.m (C)) 'sync)
     (asyncio.run
       ((fn/a [] (.assertEqual self (await (.m (AsyncC))) 'async))))))
+
+(export
+  :objects [TestRule])

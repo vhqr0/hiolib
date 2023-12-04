@@ -28,3 +28,6 @@
       (for [buf bufs]
         (.write stream buf))
       (.assertEqual self (.join b"" bufs) (.getvalue stream)))))
+
+(export
+  :objects [TestStream])

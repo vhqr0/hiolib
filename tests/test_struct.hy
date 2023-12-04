@@ -107,3 +107,6 @@
       ((fn/a []
          (.assertEqual self (await (.pack-to-bytes AsyncTSStruct "foo" 0x1234 0x3412)) b"foo\r\n\x12\x34\x12\x34")
          (.assertEqual self (await (.unpack-from-bytes AsyncTSStruct b"foo\r\n\x12\x34\x12\x34")) #("foo" 0x1234 0x3412)))))))
+
+(export
+  :objects [TestStruct])
